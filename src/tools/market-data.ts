@@ -9,6 +9,63 @@ const referenceCache = new TtlCache<unknown>();
 const REFERENCE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const INSTRUMENT_TTL = 60 * 60 * 1000; // 1 hour
 
+export async function enrichWithNames(
+  client: EtoroClient,
+  paths: PathResolver,
+  instrumentIds: string,
+  rateData: unknown,
+  cache: TtlCache<unknown>,
+): Promise<unknown> {
+  if (!Array.isArray(rateData) || rateData.length === 0) {
+    return rateData;
+  }
+
+  const ids = instrumentIds.split(",").map((s) => s.trim()).filter(Boolean);
+  if (ids.length === 0) return rateData;
+  const sortedIds = ids.sort((a, b) => Number(a) - Number(b)).join(",");
+  const cacheKey = `instruments:${sortedIds}`;
+  let instruments: unknown = cache.get(cacheKey);
+
+  if (!instruments) {
+    instruments = await client.get(paths.marketData("instruments"), {
+      instrumentIds: sortedIds,
+    });
+    cache.set(cacheKey, instruments, INSTRUMENT_TTL);
+  }
+
+  const lookup = new Map<number, { InstrumentDisplayName: string; SymbolFull: string }>();
+  if (Array.isArray(instruments)) {
+    for (const inst of instruments) {
+      if (
+        typeof inst === "object" &&
+        inst !== null &&
+        "InstrumentID" in inst
+      ) {
+        const record = inst as Record<string, unknown>;
+        lookup.set(
+          Number(record.InstrumentID),
+          {
+            InstrumentDisplayName: String(record.InstrumentDisplayName ?? ""),
+            SymbolFull: String(record.SymbolFull ?? ""),
+          },
+        );
+      }
+    }
+  }
+
+  return rateData.map((rate: unknown) => {
+    if (typeof rate !== "object" || rate === null || !("InstrumentID" in rate)) {
+      return rate;
+    }
+    const rateRecord = rate as Record<string, unknown>;
+    const names = lookup.get(Number(rateRecord.InstrumentID));
+    if (!names) {
+      return rate;
+    }
+    return { ...rateRecord, ...names };
+  });
+}
+
 export function registerMarketDataTools(
   server: McpServer,
   client: EtoroClient,
@@ -45,7 +102,8 @@ export function registerMarketDataTools(
       instrumentIds: z.string().describe("Comma-separated instrument IDs (e.g. '1,2,3')"),
     },
     async ({ instrumentIds }) => {
-      const cacheKey = `instruments:${instrumentIds}`;
+      const sortedIds = instrumentIds.split(",").map((s) => s.trim()).sort((a, b) => Number(a) - Number(b)).join(",");
+      const cacheKey = `instruments:${sortedIds}`;
       const cached = referenceCache.get(cacheKey);
       if (cached) return jsonContent(cached);
 
@@ -68,8 +126,9 @@ export function registerMarketDataTools(
     {
       instrumentIds: z.string().describe("Comma-separated instrument IDs (max 100)"),
       type: z.enum(["current", "closing_price"]).default("current").describe("Rate type: 'current' for live rates, 'closing_price' for historical closing prices"),
+      includeNames: z.boolean().default(false).describe("Include instrument display names in response"),
     },
-    async ({ instrumentIds, type }) => {
+    async ({ instrumentIds, type, includeNames }) => {
       try {
         const subpath = type === "closing_price"
           ? "instruments/history/closing-price"
@@ -77,6 +136,17 @@ export function registerMarketDataTools(
         const result = await client.get(paths.marketData(subpath), {
           instrumentIds,
         });
+
+        if (includeNames) {
+          try {
+            const enriched = await enrichWithNames(client, paths, instrumentIds, result, referenceCache);
+            return jsonContent(enriched);
+          } catch (enrichError) {
+            console.error("enrichWithNames failed:", enrichError instanceof Error ? enrichError.message : String(enrichError));
+            return jsonContent(result);
+          }
+        }
+
         return jsonContent(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

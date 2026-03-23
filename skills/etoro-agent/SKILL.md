@@ -176,13 +176,12 @@ etoro-cli watchlist create "AI Stocks" | jq '.WatchlistId'
 # → "abc-123-def"
 
 # Find instruments to add
-etoro-cli market search "NVIDIA" | jq '.Items[0].InstrumentID'
-# → 5127
-etoro-cli market search "Microsoft" | jq '.Items[0].InstrumentID'
-# → 2
+NVDA_ID=$(etoro-cli market search "NVIDIA" | jq '.Items[0].InstrumentID')
+MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.Items[0].InstrumentID')
+AMZN_ID=$(etoro-cli market search "Amazon" | jq '.Items[0].InstrumentID')
 
 # Add instruments
-etoro-cli watchlist add-items abc-123-def 5127,2,1001
+etoro-cli watchlist add-items abc-123-def "$NVDA_ID,$MSFT_ID,$AMZN_ID"
 
 # Verify
 etoro-cli watchlist get abc-123-def
@@ -198,9 +197,13 @@ A bash script that checks prices and reports:
 ```bash
 #!/bin/bash
 # Check if any watched instruments moved >2% today
-INSTRUMENTS="1,1002,5008"  # Apple, Tesla, Bitcoin
+# Look up IDs first:
+# etoro-cli market search "Apple" | jq '.Items[0].InstrumentID'
+# etoro-cli market search "Tesla" | jq '.Items[0].InstrumentID'
+# etoro-cli market search "Bitcoin" | jq '.Items[0].InstrumentID'
+INSTRUMENTS="<apple_id>,<tesla_id>,<bitcoin_id>"
 
-etoro-cli market candles 1 --interval OneDay --count 2 | \
+etoro-cli market candles <apple_id> --interval OneDay --count 2 | \
   jq '
     (.[0].Close - .[1].Close) / .[1].Close * 100 |
     if . > 2 or . < -2 then "ALERT: \(.)% move" else "Normal" end
@@ -514,13 +517,18 @@ etoro-cli portfolio positions | jq '.Positions[] | {PositionID, InstrumentID, Is
 ### Batch rate requests
 
 ```bash
+# Look up IDs first, then batch them in a single call
+APPLE_ID=$(etoro-cli market search "Apple" | jq '.Items[0].InstrumentID')
+TESLA_ID=$(etoro-cli market search "Tesla" | jq '.Items[0].InstrumentID')
+MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.Items[0].InstrumentID')
+
 # GOOD: single call for multiple instruments
-etoro-cli market rates 1,1002,5008,2,5127
+etoro-cli market rates "$APPLE_ID,$TESLA_ID,$MSFT_ID"
 
 # BAD: separate calls waste rate limit
-etoro-cli market rates 1
-etoro-cli market rates 1002
-etoro-cli market rates 5008
+etoro-cli market rates "$APPLE_ID"
+etoro-cli market rates "$TESLA_ID"
+etoro-cli market rates "$MSFT_ID"
 ```
 
 ### Use reference data for lookups
@@ -534,19 +542,16 @@ etoro-cli market ref instrument-types | jq '.[] | {InstrumentTypeID, InstrumentT
 etoro-cli market ref exchanges | jq '.[] | {ExchangeID, ExchangeName}'
 ```
 
-### Common instrument IDs
+### Discovering instrument IDs
 
-These are well-known instrument IDs on eToro (verify with `market search` as they may change):
+**Do NOT hardcode instrument IDs** -- they are not guaranteed stable across environments and may differ between demo and real.
 
-| Instrument | Typical ID |
-|-----------|-----------|
-| Apple (AAPL) | 1 |
-| Microsoft (MSFT) | 2 |
-| Tesla (TSLA) | 1002 |
-| Bitcoin (BTC) | 5008 |
-| Ethereum (ETH) | 5009 |
-| Amazon (AMZN) | 1001 |
-| NVIDIA (NVDA) | 5127 |
-| Google (GOOGL) | 1002 |
+Always use `search_instruments` or the CLI to discover the current InstrumentID before any operation:
 
-Always confirm with `etoro-cli market search <name>` before trading.
+```bash
+# Find an instrument's current ID
+etoro-cli market search "Tesla" | jq '.Items[0] | {InstrumentID, InstrumentDisplayName, SymbolFull}'
+
+# Search by symbol
+etoro-cli market search "AAPL" | jq '.Items[0].InstrumentID'
+```
