@@ -19,8 +19,12 @@ export function flattenCandles(result: unknown): unknown[] {
   const arr = Array.isArray(data) ? data : [];
   return arr.map((c: unknown) => {
     if (typeof c !== "object" || c === null) return c;
-    const candle = c as Record<string, unknown>;
-    return { ...candle, Volume: candle.Volume ?? 0 };
+    const candle = { ...(c as Record<string, unknown>) };
+    // Normalize volume: use PascalCase, remove lowercase duplicate, default null to 0
+    const vol = candle.Volume ?? candle.volume ?? 0;
+    delete candle.volume;
+    candle.Volume = vol;
+    return candle;
   });
 }
 
@@ -35,9 +39,16 @@ export async function enrichWithNames(
   rateData: unknown,
   cache: TtlCache<unknown>,
 ): Promise<unknown> {
-  if (!Array.isArray(rateData) || rateData.length === 0) {
+  // API returns { rates: [...] } — unwrap if needed
+  let rateArray: unknown[];
+  if (Array.isArray(rateData)) {
+    rateArray = rateData;
+  } else if (typeof rateData === "object" && rateData !== null && "rates" in rateData) {
+    rateArray = (rateData as Record<string, unknown>).rates as unknown[];
+  } else {
     return rateData;
   }
+  if (rateArray.length === 0) return rateData;
 
   const ids = instrumentIds.split(",").map((s) => s.trim()).filter(Boolean);
   if (ids.length === 0) return rateData;
@@ -52,37 +63,48 @@ export async function enrichWithNames(
     cache.set(cacheKey, instruments, INSTRUMENT_TTL);
   }
 
-  const lookup = new Map<number, { InstrumentDisplayName: string; SymbolFull: string }>();
+  // API returns { instrumentDisplayDatas: [...] } — unwrap if needed
+  let instrumentList: unknown[];
   if (Array.isArray(instruments)) {
-    for (const inst of instruments) {
-      if (
-        typeof inst === "object" &&
-        inst !== null &&
-        "InstrumentID" in inst
-      ) {
-        const record = inst as Record<string, unknown>;
-        lookup.set(
-          Number(record.InstrumentID),
-          {
-            InstrumentDisplayName: String(record.InstrumentDisplayName ?? ""),
-            SymbolFull: String(record.SymbolFull ?? ""),
-          },
-        );
-      }
-    }
+    instrumentList = instruments;
+  } else if (typeof instruments === "object" && instruments !== null && "instrumentDisplayDatas" in instruments) {
+    instrumentList = (instruments as Record<string, unknown>).instrumentDisplayDatas as unknown[];
+  } else {
+    instrumentList = [];
   }
 
-  return rateData.map((rate: unknown) => {
-    if (typeof rate !== "object" || rate === null || !("InstrumentID" in rate)) {
-      return rate;
-    }
+  const lookup = new Map<number, { instrumentDisplayName: string; symbolFull: string }>();
+  for (const inst of instrumentList) {
+    if (typeof inst !== "object" || inst === null) continue;
+    const record = inst as Record<string, unknown>;
+    // API uses camelCase: instrumentID, instrumentDisplayName
+    const id = record.instrumentID ?? record.InstrumentID;
+    if (id === undefined) continue;
+    lookup.set(
+      Number(id),
+      {
+        instrumentDisplayName: String(record.instrumentDisplayName ?? record.InstrumentDisplayName ?? ""),
+        symbolFull: String(record.symbolFull ?? record.SymbolFull ?? ""),
+      },
+    );
+  }
+
+  const enriched = rateArray.map((rate: unknown) => {
+    if (typeof rate !== "object" || rate === null) return rate;
     const rateRecord = rate as Record<string, unknown>;
-    const names = lookup.get(Number(rateRecord.InstrumentID));
-    if (!names) {
-      return rate;
-    }
+    // API uses camelCase: instrumentID
+    const id = rateRecord.instrumentID ?? rateRecord.InstrumentID;
+    if (id === undefined) return rate;
+    const names = lookup.get(Number(id));
+    if (!names) return rate;
     return { ...rateRecord, ...names };
   });
+
+  // Re-wrap if original was wrapped in { rates: [...] }
+  if (!Array.isArray(rateData) && typeof rateData === "object" && rateData !== null && "rates" in rateData) {
+    return { ...(rateData as Record<string, unknown>), rates: enriched };
+  }
+  return enriched;
 }
 
 export function registerMarketDataTools(
@@ -101,21 +123,30 @@ export function registerMarketDataTools(
     },
     async ({ query, filterBy, page, pageSize }) => {
       try {
+        const searchFields = "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID";
+
         if (filterBy === "symbol") {
-          // Server-side exact filter by symbol
-          const result = await client.get(paths.marketData("search"), {
-            fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+          // Try server-side exact symbol match first
+          const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+            fields: searchFields,
             InternalSymbolFull: query.toUpperCase(),
             pageNumber: page,
             pageSize,
           });
-          return jsonContent(result);
+
+          // If symbol search found results, return them
+          const symbolItems = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
+          if (symbolItems && symbolItems.length > 0) {
+            return jsonContent(result);
+          }
+
+          // Fall back to name search if symbol returned nothing
         }
 
         // Client-side name filtering: fetch a larger page and filter locally
         const fetchSize = Math.min(pageSize * 5, 100);
         const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-          fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+          fields: searchFields,
           pageNumber: page,
           pageSize: fetchSize,
         });

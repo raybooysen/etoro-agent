@@ -20,9 +20,12 @@ export function registerDiscoveryTools(
       try {
         if (type === "curated_lists") {
           const result = await client.get(paths.discovery("curated-lists"));
-          return jsonContent(result);
+          return jsonContent(result ?? []);
         }
         const result = await client.get(paths.discovery(`market-recommendations/${count}`));
+        if (result === undefined || result === null) {
+          return jsonContent({ recommendations: [], message: "No recommendations available for this account." });
+        }
         return jsonContent(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
