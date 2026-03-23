@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Skip CI for version bump commits to avoid infinite loop
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest

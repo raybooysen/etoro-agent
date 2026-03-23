@@ -1,8 +1,24 @@
 {
-  "name": "etoro-agent",
+  "name": "@raybooysen/etoro-agent",
   "version": "1.0.0",
   "description": "MCP server and CLI for the eToro Public API",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raybooysen/etoro-agent.git"
+  },
+  "homepage": "https://github.com/raybooysen/etoro-agent#readme",
+  "keywords": [
+    "etoro",
+    "mcp",
+    "cli",
+    "trading",
+    "portfolio",
+    "market-data",
+    "model-context-protocol",
+    "ai-agent"
+  ],
   "bin": {
     "etoro-mcp": "dist/index.js",
     "etoro-cli": "dist/cli.js"
@@ -10,6 +26,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc && chmod +x dist/index.js dist/cli.js",
     "dev": "tsx src/index.ts",
