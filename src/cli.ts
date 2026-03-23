@@ -4,6 +4,7 @@ import { EtoroClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
+import { flattenCandles } from "./tools/market-data.js";
 
 // --- Arg parsing ---
 
@@ -215,9 +216,10 @@ async function main() {
           const interval = flag(f, "interval") ?? "OneDay";
           const count = flagNum(f, "count") ?? 100;
           const direction = flag(f, "direction") ?? "desc";
-          return output(await client.get(
+          const raw = await client.get(
             paths.marketData(`instruments/${id}/history/candles/${direction}/${interval}/${count}`),
-          ));
+          );
+          return output(flattenCandles(raw));
         }
         case "ref":
           return output(await client.get(paths.marketData(
