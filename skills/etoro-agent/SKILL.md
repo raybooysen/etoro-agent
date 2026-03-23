@@ -234,7 +234,8 @@ etoro-cli market instrument <ids>              # comma-separated IDs
 # Get current market prices
 etoro-cli market rates <ids>                   # comma-separated, max 100
 
-# Get OHLC candle data
+# Get OHLC candle data (returns flat array of {Open,High,Low,Close,Volume,...})
+# Volume defaults to 0 for crypto instruments where the API returns null
 etoro-cli market candles <instrumentId> \
   [--interval OneDay] \                        # OneMinute|FiveMinutes|TenMinutes|
                                                # FifteenMinutes|ThirtyMinutes|OneHour|
