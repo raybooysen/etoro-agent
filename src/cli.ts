@@ -168,13 +168,40 @@ async function main() {
 
     case "market":
       switch (sub) {
-        case "search":
-          return output(await client.get(paths.marketData("search"), {
+        case "search": {
+          const searchQuery = requireArg(rest, 0, "query");
+          const filterBy = flag(f, "filter-by") ?? "symbol";
+          const searchPage = flagNum(f, "page") ?? 1;
+          const searchPageSize = flagNum(f, "page-size") ?? 20;
+
+          if (filterBy === "symbol") {
+            return output(await client.get(paths.marketData("search"), {
+              fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+              InternalSymbolFull: searchQuery.toUpperCase(),
+              pageNumber: searchPage,
+              pageSize: searchPageSize,
+            }));
+          }
+
+          // Client-side name filtering
+          const fetchSize = Math.min(searchPageSize * 5, 100);
+          const searchResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
             fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
-            searchText: requireArg(rest, 0, "query"),
-            pageNumber: flagNum(f, "page") ?? 1,
-            pageSize: flagNum(f, "page-size") ?? 20,
-          }));
+            pageNumber: searchPage,
+            pageSize: fetchSize,
+          });
+          const searchItems = (searchResult.items ?? searchResult.Items) as Array<Record<string, unknown>> | undefined;
+          if (!searchItems) return output(searchResult);
+
+          const lowerQuery = searchQuery.toLowerCase();
+          const filtered = searchItems.filter((item) => {
+            const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
+            const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
+            const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
+            return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
+          });
+          return output({ ...searchResult, items: filtered.slice(0, searchPageSize), Items: undefined, totalItems: filtered.length, TotalItems: undefined });
+        }
         case "instrument":
           return output(await client.get(paths.marketData("instruments"), {
             instrumentIds: requireArg(rest, 0, "ids"),

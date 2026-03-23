@@ -160,7 +160,7 @@ describe("enrichWithNames", () => {
 });
 
 describe("market-data tool handlers (via mock client)", () => {
-  it("search_instruments calls correct path with correct params", async () => {
+  it("search_instruments (symbol mode) sends InternalSymbolFull param", async () => {
     const paths = createPathResolver("demo");
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ items: [], totalItems: 0 }), {
@@ -179,7 +179,7 @@ describe("market-data tool handlers (via mock client)", () => {
 
     const result = await client.get(paths.marketData("search"), {
       fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
-      searchText: "Apple",
+      InternalSymbolFull: "AAPL",
       pageNumber: 1,
       pageSize: 20,
     });
@@ -188,7 +188,8 @@ describe("market-data tool handlers (via mock client)", () => {
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
     const parsed = new URL(url);
     expect(parsed.pathname).toBe("/api/v1/market-data/search");
-    expect(parsed.searchParams.get("searchText")).toBe("Apple");
+    expect(parsed.searchParams.get("InternalSymbolFull")).toBe("AAPL");
+    expect(parsed.searchParams.has("searchText")).toBe(false);
     expect(parsed.searchParams.get("pageNumber")).toBe("1");
     expect(parsed.searchParams.get("pageSize")).toBe("20");
     expect(result).toEqual({ items: [], totalItems: 0 });
@@ -212,7 +213,7 @@ describe("market-data tool handlers (via mock client)", () => {
     );
 
     await expect(
-      client.get(paths.marketData("search"), { searchText: "test" }),
+      client.get(paths.marketData("search"), { InternalSymbolFull: "TEST" }),
     ).rejects.toThrow("Bad request");
   });
 
