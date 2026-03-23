@@ -39,9 +39,16 @@ export async function enrichWithNames(
   rateData: unknown,
   cache: TtlCache<unknown>,
 ): Promise<unknown> {
-  if (!Array.isArray(rateData) || rateData.length === 0) {
+  // API returns { rates: [...] } — unwrap if needed
+  let rateArray: unknown[];
+  if (Array.isArray(rateData)) {
+    rateArray = rateData;
+  } else if (typeof rateData === "object" && rateData !== null && "rates" in rateData) {
+    rateArray = (rateData as Record<string, unknown>).rates as unknown[];
+  } else {
     return rateData;
   }
+  if (rateArray.length === 0) return rateData;
 
   const ids = instrumentIds.split(",").map((s) => s.trim()).filter(Boolean);
   if (ids.length === 0) return rateData;
@@ -56,37 +63,48 @@ export async function enrichWithNames(
     cache.set(cacheKey, instruments, INSTRUMENT_TTL);
   }
 
-  const lookup = new Map<number, { InstrumentDisplayName: string; SymbolFull: string }>();
+  // API returns { instrumentDisplayDatas: [...] } — unwrap if needed
+  let instrumentList: unknown[];
   if (Array.isArray(instruments)) {
-    for (const inst of instruments) {
-      if (
-        typeof inst === "object" &&
-        inst !== null &&
-        "InstrumentID" in inst
-      ) {
-        const record = inst as Record<string, unknown>;
-        lookup.set(
-          Number(record.InstrumentID),
-          {
-            InstrumentDisplayName: String(record.InstrumentDisplayName ?? ""),
-            SymbolFull: String(record.SymbolFull ?? ""),
-          },
-        );
-      }
-    }
+    instrumentList = instruments;
+  } else if (typeof instruments === "object" && instruments !== null && "instrumentDisplayDatas" in instruments) {
+    instrumentList = (instruments as Record<string, unknown>).instrumentDisplayDatas as unknown[];
+  } else {
+    instrumentList = [];
   }
 
-  return rateData.map((rate: unknown) => {
-    if (typeof rate !== "object" || rate === null || !("InstrumentID" in rate)) {
-      return rate;
-    }
+  const lookup = new Map<number, { instrumentDisplayName: string; symbolFull: string }>();
+  for (const inst of instrumentList) {
+    if (typeof inst !== "object" || inst === null) continue;
+    const record = inst as Record<string, unknown>;
+    // API uses camelCase: instrumentID, instrumentDisplayName
+    const id = record.instrumentID ?? record.InstrumentID;
+    if (id === undefined) continue;
+    lookup.set(
+      Number(id),
+      {
+        instrumentDisplayName: String(record.instrumentDisplayName ?? record.InstrumentDisplayName ?? ""),
+        symbolFull: String(record.symbolFull ?? record.SymbolFull ?? ""),
+      },
+    );
+  }
+
+  const enriched = rateArray.map((rate: unknown) => {
+    if (typeof rate !== "object" || rate === null) return rate;
     const rateRecord = rate as Record<string, unknown>;
-    const names = lookup.get(Number(rateRecord.InstrumentID));
-    if (!names) {
-      return rate;
-    }
+    // API uses camelCase: instrumentID
+    const id = rateRecord.instrumentID ?? rateRecord.InstrumentID;
+    if (id === undefined) return rate;
+    const names = lookup.get(Number(id));
+    if (!names) return rate;
     return { ...rateRecord, ...names };
   });
+
+  // Re-wrap if original was wrapped in { rates: [...] }
+  if (!Array.isArray(rateData) && typeof rateData === "object" && rateData !== null && "rates" in rateData) {
+    return { ...(rateData as Record<string, unknown>), rates: enriched };
+  }
+  return enriched;
 }
 
 export function registerMarketDataTools(

@@ -61,8 +61,8 @@ describe("enrichWithNames", () => {
     const result = await enrichWithNames(client, paths, "1,2", rateData, cache);
 
     expect(result).toEqual([
-      { InstrumentID: 1, Ask: 150.5, Bid: 150.0, InstrumentDisplayName: "Apple Inc.", SymbolFull: "AAPL.US" },
-      { InstrumentID: 2, Ask: 300.0, Bid: 299.5, InstrumentDisplayName: "Microsoft Corp.", SymbolFull: "MSFT.US" },
+      { InstrumentID: 1, Ask: 150.5, Bid: 150.0, instrumentDisplayName: "Apple Inc.", symbolFull: "AAPL.US" },
+      { InstrumentID: 2, Ask: 300.0, Bid: 299.5, instrumentDisplayName: "Microsoft Corp.", symbolFull: "MSFT.US" },
     ]);
   });
 
@@ -91,7 +91,7 @@ describe("enrichWithNames", () => {
     const result = await enrichWithNames(client, paths, "1,999", rateData, cache);
 
     expect(result).toEqual([
-      { InstrumentID: 1, Ask: 150.5, Bid: 150.0, InstrumentDisplayName: "Apple Inc.", SymbolFull: "AAPL.US" },
+      { InstrumentID: 1, Ask: 150.5, Bid: 150.0, instrumentDisplayName: "Apple Inc.", symbolFull: "AAPL.US" },
       { InstrumentID: 999, Ask: 50.0, Bid: 49.5 },
     ]);
   });

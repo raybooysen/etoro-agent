@@ -9,7 +9,6 @@ describe.skipIf(skip)("Integration: Market Data", () => {
     const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
-        fields: "InstrumentDisplayName,InstrumentID,SymbolFull,InternalSymbolFull",
         InternalSymbolFull: "AAPL",
         pageSize: 5,
         pageNumber: 1,
@@ -17,142 +16,137 @@ describe.skipIf(skip)("Integration: Market Data", () => {
     );
 
     expect(result).toBeDefined();
-    const items = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
-    expect(items).toBeDefined();
-    expect(items!.length).toBeGreaterThan(0);
-
-    // The result should contain Apple
-    const hasApple = items!.some((item) => {
-      const internalSymbol = String(item.InternalSymbolFull ?? "").toUpperCase();
-      return internalSymbol.includes("AAPL");
-    });
-    expect(hasApple).toBe(true);
+    expect(result.items).toBeDefined();
+    const items = result.items as Array<Record<string, unknown>>;
+    expect(items.length).toBeGreaterThan(0);
+    // totalItems should be small (not 11,168 — that means filtering is broken)
+    expect(result.totalItems as number).toBeLessThan(100);
   });
 
   it("should return different results for different symbol queries", async () => {
     const appleResult = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
-      {
-        fields: "InstrumentID,InternalSymbolFull",
-        InternalSymbolFull: "AAPL",
-        pageSize: 1,
-        pageNumber: 1,
-      },
+      { InternalSymbolFull: "AAPL", pageSize: 1, pageNumber: 1 },
     );
     const btcResult = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
-      {
-        fields: "InstrumentID,InternalSymbolFull",
-        InternalSymbolFull: "BTC",
-        pageSize: 1,
-        pageNumber: 1,
-      },
+      { InternalSymbolFull: "BTC", pageSize: 1, pageNumber: 1 },
     );
 
-    const appleItems = (appleResult.items ?? appleResult.Items) as Array<Record<string, unknown>>;
-    const btcItems = (btcResult.items ?? btcResult.Items) as Array<Record<string, unknown>>;
+    const appleItems = appleResult.items as Array<Record<string, unknown>>;
+    const btcItems = btcResult.items as Array<Record<string, unknown>>;
 
     expect(appleItems.length).toBeGreaterThan(0);
     expect(btcItems.length).toBeGreaterThan(0);
-    expect(appleItems[0].InstrumentID).not.toBe(btcItems[0].InstrumentID);
+    // API returns camelCase instrumentId
+    expect(appleItems[0].instrumentId).not.toBe(btcItems[0].instrumentId);
   });
 
   it("should return empty or no results for nonsensical symbol", async () => {
     const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
-        fields: "InstrumentID",
         InternalSymbolFull: "XYZZZNOTASYMBOL99999",
         pageSize: 5,
         pageNumber: 1,
       },
     );
 
-    const items = (result.items ?? result.Items) as Array<unknown> | undefined;
-    const totalItems = (result.totalItems ?? result.TotalItems) as number | undefined;
+    const items = result.items as Array<unknown> | undefined;
+    const totalItems = result.totalItems as number | undefined;
     const isEmpty = (items !== undefined && items.length === 0) || totalItems === 0;
     expect(isEmpty).toBe(true);
   });
 
   it("should get instrument metadata by ID", async () => {
-    const result = await ctx!.client.get<unknown>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("instruments"),
       { instrumentIds: "1" },
     );
 
     expect(result).toBeDefined();
-    // Response should be an array with InstrumentID field
-    expect(Array.isArray(result)).toBe(true);
-    const arr = result as Array<Record<string, unknown>>;
+    // API returns { instrumentDisplayDatas: [...] }
+    expect(result.instrumentDisplayDatas).toBeDefined();
+    const arr = result.instrumentDisplayDatas as Array<Record<string, unknown>>;
     expect(arr.length).toBeGreaterThan(0);
-    expect(arr[0]).toHaveProperty("InstrumentID");
+    expect(arr[0]).toHaveProperty("instrumentID");
+    expect(arr[0]).toHaveProperty("instrumentDisplayName");
   });
 
   it("should get current rates for instruments", async () => {
-    const result = await ctx!.client.get<unknown>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("instruments/rates"),
       { instrumentIds: "1" },
     );
 
     expect(result).toBeDefined();
-    // Response should be an array with numeric rate fields
-    expect(Array.isArray(result)).toBe(true);
-    const arr = result as Array<Record<string, unknown>>;
+    // API returns { rates: [...] }
+    expect(result.rates).toBeDefined();
+    const arr = result.rates as Array<Record<string, unknown>>;
     expect(arr.length).toBeGreaterThan(0);
     const rate = arr[0];
-    expect(rate).toHaveProperty("InstrumentID");
-    // At least one of Ask/Bid/LastExecution should be a number
+    expect(rate).toHaveProperty("instrumentID");
+    // At least one of ask/bid/lastExecution should be a number
     const hasNumericRate =
-      typeof rate.Ask === "number" ||
-      typeof rate.Bid === "number" ||
-      typeof rate.LastExecution === "number";
+      typeof rate.ask === "number" ||
+      typeof rate.bid === "number" ||
+      typeof rate.lastExecution === "number";
     expect(hasNumericRate).toBe(true);
   });
 
   it("should get candle data for an instrument", async () => {
-    const result = await ctx!.client.get<unknown>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("instruments/1/history/candles/desc/OneDay/10"),
     );
 
     expect(result).toBeDefined();
-    // Response should contain candle objects with OHLC fields
-    expect(Array.isArray(result)).toBe(true);
-    const arr = result as Array<Record<string, unknown>>;
-    expect(arr.length).toBeGreaterThan(0);
-    const candle = arr[0];
-    // Candles should have Open, High, Low, Close fields (or similar casing)
-    const hasOHLC =
-      ("Open" in candle || "open" in candle) &&
-      ("High" in candle || "high" in candle) &&
-      ("Low" in candle || "low" in candle) &&
-      ("Close" in candle || "close" in candle);
-    expect(hasOHLC).toBe(true);
+    // API returns { candles: [{ candles: [...] }] }
+    expect(result.candles).toBeDefined();
+    const outer = result.candles as Array<Record<string, unknown>>;
+    expect(outer.length).toBeGreaterThan(0);
+    const inner = outer[0].candles as Array<Record<string, unknown>>;
+    expect(inner.length).toBeGreaterThan(0);
+    const candle = inner[0];
+    expect(candle).toHaveProperty("open");
+    expect(candle).toHaveProperty("high");
+    expect(candle).toHaveProperty("low");
+    expect(candle).toHaveProperty("close");
   });
 
   it("should get instrument types reference data", async () => {
-    const result = await ctx!.client.get<unknown>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("instrument-types"),
     );
 
     expect(result).toBeDefined();
-    expect(Array.isArray(result)).toBe(true);
+    // API returns { instrumentTypes: [...] }
+    expect(result.instrumentTypes).toBeDefined();
+    const arr = result.instrumentTypes as Array<Record<string, unknown>>;
+    expect(arr.length).toBeGreaterThan(0);
+    expect(arr[0]).toHaveProperty("instrumentTypeID");
   });
 
   it("should get exchanges reference data", async () => {
-    const result = await ctx!.client.get<unknown>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("exchanges"),
     );
 
     expect(result).toBeDefined();
-    expect(Array.isArray(result)).toBe(true);
+    // API returns { exchanges: [...] }
+    expect(result.exchanges).toBeDefined();
+    const arr = result.exchanges as Array<Record<string, unknown>>;
+    expect(arr.length).toBeGreaterThan(0);
   });
 
   it("should get stock industries reference data", async () => {
-    const result = await ctx!.client.get<unknown>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("stocks-industries"),
     );
 
     expect(result).toBeDefined();
-    expect(Array.isArray(result)).toBe(true);
+    // API returns { stocksIndustries: [...] }
+    expect(result.stocksIndustries).toBeDefined();
+    const arr = result.stocksIndustries as Array<Record<string, unknown>>;
+    expect(arr.length).toBeGreaterThan(0);
   });
 });
