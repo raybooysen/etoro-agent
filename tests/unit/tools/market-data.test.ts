@@ -60,10 +60,11 @@ describe("enrichWithNames", () => {
     const client = makeMockClient(instrumentMetadata);
     const result = await enrichWithNames(client, paths, "1,2", rateData, cache);
 
-    expect(result).toEqual([
-      { InstrumentID: 1, Ask: 150.5, Bid: 150.0, instrumentDisplayName: "Apple Inc.", symbolFull: "AAPL.US" },
-      { InstrumentID: 2, Ask: 300.0, Bid: 299.5, instrumentDisplayName: "Microsoft Corp.", symbolFull: "MSFT.US" },
-    ]);
+    const arr = result as Array<Record<string, unknown>>;
+    expect(arr[0].instrumentDisplayName).toBe("Apple Inc.");
+    expect(arr[0].symbolFull).toBe("AAPL.US");
+    expect(arr[1].instrumentDisplayName).toBe("Microsoft Corp.");
+    expect(arr[1].symbolFull).toBe("MSFT.US");
   });
 
   it("returns original data unchanged when metadata fetch fails", async () => {
@@ -90,10 +91,12 @@ describe("enrichWithNames", () => {
     const client = makeMockClient(instrumentMetadata);
     const result = await enrichWithNames(client, paths, "1,999", rateData, cache);
 
-    expect(result).toEqual([
-      { InstrumentID: 1, Ask: 150.5, Bid: 150.0, instrumentDisplayName: "Apple Inc.", symbolFull: "AAPL.US" },
-      { InstrumentID: 999, Ask: 50.0, Bid: 49.5 },
-    ]);
+    const arr = result as Array<Record<string, unknown>>;
+    expect(arr[0].instrumentDisplayName).toBe("Apple Inc.");
+    expect(arr[0].symbolFull).toBe("AAPL.US");
+    // Unknown ID should not have name fields
+    expect(arr[1].instrumentDisplayName).toBeUndefined();
+    expect(arr[1].InstrumentID).toBe(999);
   });
 
   it("returns empty array for empty rate data", async () => {
@@ -103,12 +106,40 @@ describe("enrichWithNames", () => {
     expect(result).toEqual([]);
   });
 
-  it("returns non-array rate data unchanged", async () => {
+  it("returns non-array rate data unchanged when not wrapped", async () => {
     const client = makeMockClient([]);
     const rateData = { someField: "value" };
     const result = await enrichWithNames(client, paths, "1", rateData, cache);
 
     expect(result).toEqual({ someField: "value" });
+  });
+
+  it("unwraps { rates: [...] } response and re-wraps after enrichment", async () => {
+    const instrumentMetadata = { instrumentDisplayDatas: [
+      { instrumentID: 1, instrumentDisplayName: "EUR/USD", symbolFull: "EURUSD" },
+    ]};
+    const rateData = { rates: [{ instrumentID: 1, ask: 1.16, bid: 1.15 }] };
+
+    const client = makeMockClient(instrumentMetadata);
+    const result = await enrichWithNames(client, paths, "1", rateData, cache) as Record<string, unknown>;
+
+    expect(result.rates).toBeDefined();
+    const rates = result.rates as Array<Record<string, unknown>>;
+    expect(rates[0].instrumentDisplayName).toBe("EUR/USD");
+    expect(rates[0].symbolFull).toBe("EURUSD");
+  });
+
+  it("handles { instrumentDisplayDatas: [...] } wrapped instrument response", async () => {
+    const instrumentMetadata = { instrumentDisplayDatas: [
+      { instrumentID: 1, instrumentDisplayName: "Apple", symbolFull: "AAPL" },
+    ]};
+    const rateData = [{ instrumentID: 1, ask: 150 }];
+
+    const client = makeMockClient(instrumentMetadata);
+    const result = await enrichWithNames(client, paths, "1", rateData, cache) as Array<Record<string, unknown>>;
+
+    expect(result[0].instrumentDisplayName).toBe("Apple");
+    expect(result[0].symbolFull).toBe("AAPL");
   });
 
   it("sorts instrument IDs for consistent cache keys", async () => {

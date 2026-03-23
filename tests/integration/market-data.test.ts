@@ -132,9 +132,9 @@ describe.skipIf(skip)("Integration: Market Data", () => {
     );
 
     expect(result).toBeDefined();
-    // API returns { exchanges: [...] }
-    expect(result.exchanges).toBeDefined();
-    const arr = result.exchanges as Array<Record<string, unknown>>;
+    // API returns { exchangeInfo: [...] }
+    expect(result.exchangeInfo).toBeDefined();
+    const arr = result.exchangeInfo as Array<Record<string, unknown>>;
     expect(arr.length).toBeGreaterThan(0);
   });
 
