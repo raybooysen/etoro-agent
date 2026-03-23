@@ -5,6 +5,25 @@ import type { PathResolver } from "../utils/path-resolver.js";
 import { TtlCache } from "../utils/cache.js";
 import { jsonContent, errorContent } from "../utils/formatters.js";
 
+/** Flatten the nested eToro candle response into a plain array with null volumes defaulted to 0. */
+export function flattenCandles(result: unknown): unknown[] {
+  // API returns { candles: [{ candles: [...] }] } or similar nested shapes.
+  // Walk into known wrappers to find the actual candle array.
+  let data: unknown = result;
+  if (typeof data === "object" && data !== null && "candles" in data) {
+    data = (data as Record<string, unknown>).candles;
+  }
+  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null && "candles" in data[0]) {
+    data = (data[0] as Record<string, unknown>).candles;
+  }
+  const arr = Array.isArray(data) ? data : [];
+  return arr.map((c: unknown) => {
+    if (typeof c !== "object" || c === null) return c;
+    const candle = c as Record<string, unknown>;
+    return { ...candle, Volume: candle.Volume ?? 0 };
+  });
+}
+
 const referenceCache = new TtlCache<unknown>();
 const REFERENCE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const INSTRUMENT_TTL = 60 * 60 * 1000; // 1 hour
@@ -200,10 +219,11 @@ export function registerMarketDataTools(
     },
     async ({ instrumentId, interval, count, direction }) => {
       try {
-        const result = await client.get(
+        const result = await client.get<unknown>(
           paths.marketData(`instruments/${instrumentId}/history/candles/${direction}/${interval}/${count}`),
         );
-        return jsonContent(result);
+        const candles = flattenCandles(result);
+        return jsonContent(candles);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return errorContent(`Failed to get candles: ${message}`);

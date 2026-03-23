@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { enrichWithNames } from "../../../src/tools/market-data.js";
+import { enrichWithNames, flattenCandles } from "../../../src/tools/market-data.js";
 import { EtoroClient } from "../../../src/client.js";
 import { TtlCache } from "../../../src/utils/cache.js";
 import { createPathResolver, type PathResolver } from "../../../src/utils/path-resolver.js";
@@ -271,5 +271,60 @@ describe("market-data tool handlers (via mock client)", () => {
     const parsed = new URL(url);
     expect(parsed.pathname).toBe("/api/v1/market-data/instruments/history/closing-price");
     expect(parsed.searchParams.get("instrumentIds")).toBe("1,2");
+  });
+});
+
+describe("flattenCandles", () => {
+  it("should unwrap nested { candles: [{ candles: [...] }] } response", () => {
+    const nested = {
+      candles: [{
+        candles: [
+          { Open: 100, High: 110, Low: 95, Close: 105, Volume: 5000 },
+          { Open: 105, High: 115, Low: 100, Close: 110, Volume: 6000 },
+        ],
+      }],
+    };
+    const result = flattenCandles(nested);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ Open: 100, High: 110, Low: 95, Close: 105, Volume: 5000 });
+    expect(result[1]).toEqual({ Open: 105, High: 115, Low: 100, Close: 110, Volume: 6000 });
+  });
+
+  it("should default null Volume to 0", () => {
+    const nested = {
+      candles: [{
+        candles: [
+          { Open: 100, High: 110, Low: 95, Close: 105, Volume: null },
+        ],
+      }],
+    };
+    const result = flattenCandles(nested);
+    expect(result[0]).toHaveProperty("Volume", 0);
+  });
+
+  it("should handle already-flat arrays", () => {
+    const flat = [
+      { Open: 100, High: 110, Low: 95, Close: 105, Volume: 5000 },
+    ];
+    const result = flattenCandles(flat);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ Open: 100, High: 110, Low: 95, Close: 105, Volume: 5000 });
+  });
+
+  it("should handle single-level { candles: [...] } wrapper", () => {
+    const wrapped = {
+      candles: [
+        { Open: 100, High: 110, Low: 95, Close: 105, Volume: 3000 },
+      ],
+    };
+    const result = flattenCandles(wrapped);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ Open: 100, High: 110, Low: 95, Close: 105, Volume: 3000 });
+  });
+
+  it("should return empty array for unexpected shapes", () => {
+    expect(flattenCandles(null)).toEqual([]);
+    expect(flattenCandles(undefined)).toEqual([]);
+    expect(flattenCandles("string")).toEqual([]);
   });
 });
