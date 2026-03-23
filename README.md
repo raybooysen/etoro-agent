@@ -138,8 +138,8 @@ Retrieve detailed metadata for instruments by their IDs.
 # Single instrument
 etoro-cli market instrument 1
 
-# Multiple instruments (comma-separated)
-etoro-cli market instrument 1,2,3,1001
+# Multiple instruments (comma-separated, look up IDs with: etoro-cli market search <name>)
+etoro-cli market instrument <id1>,<id2>,<id3>
 ```
 
 #### Get live rates
@@ -150,8 +150,8 @@ Get current market prices for instruments.
 # Single instrument
 etoro-cli market rates 1
 
-# Multiple instruments (max 100)
-etoro-cli market rates 1,2,3,1001,5008
+# Multiple instruments (max 100, look up IDs with: etoro-cli market search <name>)
+etoro-cli market rates <id1>,<id2>,<id3>
 ```
 
 #### Get historical candles
@@ -229,8 +229,9 @@ All trading commands route to demo or real API paths based on your configured en
 # Buy $100 of Apple stock with 1x leverage
 etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100
 
-# Short sell $50 of Tesla with 2x leverage
-etoro-cli trade open --instrument 1002 --sell --leverage 2 --amount 50
+# Short sell $50 of an instrument with 2x leverage (look up ID first)
+# etoro-cli market search "Tesla" | jq '.Items[0].InstrumentID'
+etoro-cli trade open --instrument <instrument_id> --sell --leverage 2 --amount 50
 
 # With stop loss and take profit
 etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 \
@@ -240,8 +241,9 @@ etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 \
 #### Open a market order (by units)
 
 ```bash
-# Buy 0.5 units of Bitcoin
-etoro-cli trade open-units --instrument 5008 --buy --leverage 1 --units 0.5
+# Buy 0.5 units of an instrument (look up ID first)
+# etoro-cli market search "Bitcoin" | jq '.Items[0].InstrumentID'
+etoro-cli trade open-units --instrument <instrument_id> --buy --leverage 1 --units 0.5
 ```
 
 #### Close a position
@@ -342,14 +344,14 @@ etoro-cli watchlist delete abc123
 #### Add instruments to a watchlist
 
 ```bash
-# Add Apple (1), Tesla (1002), and Bitcoin (5008)
-etoro-cli watchlist add-items abc123 1,1002,5008
+# Add instruments by ID (look up IDs first with: etoro-cli market search <name>)
+etoro-cli watchlist add-items abc123 <id1>,<id2>,<id3>
 ```
 
 #### Remove instruments from a watchlist
 
 ```bash
-etoro-cli watchlist remove-items abc123 1,1002
+etoro-cli watchlist remove-items abc123 <id1>,<id2>
 ```
 
 ### Feeds
@@ -588,7 +590,7 @@ Once connected, you can ask your AI assistant things like:
 - *"Find the top popular investors this year with low risk scores"*
 - *"Create a watchlist called 'Tech Leaders' and add AAPL, MSFT, GOOGL"*
 - *"Show me 1-hour candles for Bitcoin over the last 24 hours"*
-- *"Close my position on instrument 1002"*
+- *"Close my Tesla position"*
 - *"What limit orders do I have open?"*
 
 ---
