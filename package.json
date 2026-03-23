@@ -1,6 +1,6 @@
 {
   "name": "@raybooysen/etoro-agent",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "MCP server and CLI for the eToro Public API",
   "type": "module",
   "license": "MIT",
