@@ -5,65 +5,64 @@ const skip = skipIfNoCredentials();
 const ctx = skip ? null : createTestClient()!;
 
 describe.skipIf(skip)("Integration: Market Data", () => {
-  it("should search for instruments by text", async () => {
+  it("should search for instruments by symbol (server-side filter)", async () => {
     const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
-        fields: "InstrumentDisplayName,InstrumentID,SymbolFull",
-        searchText: "Apple",
+        fields: "InstrumentDisplayName,InstrumentID,SymbolFull,InternalSymbolFull",
+        InternalSymbolFull: "AAPL",
         pageSize: 5,
         pageNumber: 1,
       },
     );
 
     expect(result).toBeDefined();
-    // API returns lowercase "items" and "totalItems"
     const items = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
     expect(items).toBeDefined();
+    expect(items!.length).toBeGreaterThan(0);
 
-    // At least one result should contain "Apple" (case-insensitive)
+    // The result should contain Apple
     const hasApple = items!.some((item) => {
-      const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
-      const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
-      return displayName.includes("apple") || symbolFull.includes("apple");
+      const internalSymbol = String(item.InternalSymbolFull ?? "").toUpperCase();
+      return internalSymbol.includes("AAPL");
     });
     expect(hasApple).toBe(true);
   });
 
-  it("should return different results for different search queries", async () => {
+  it("should return different results for different symbol queries", async () => {
     const appleResult = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
-        fields: "InstrumentID",
-        searchText: "Apple",
+        fields: "InstrumentID,InternalSymbolFull",
+        InternalSymbolFull: "AAPL",
         pageSize: 1,
         pageNumber: 1,
       },
     );
-    const bitcoinResult = await ctx!.client.get<Record<string, unknown>>(
+    const btcResult = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
-        fields: "InstrumentID",
-        searchText: "Bitcoin",
+        fields: "InstrumentID,InternalSymbolFull",
+        InternalSymbolFull: "BTC",
         pageSize: 1,
         pageNumber: 1,
       },
     );
 
     const appleItems = (appleResult.items ?? appleResult.Items) as Array<Record<string, unknown>>;
-    const bitcoinItems = (bitcoinResult.items ?? bitcoinResult.Items) as Array<Record<string, unknown>>;
+    const btcItems = (btcResult.items ?? btcResult.Items) as Array<Record<string, unknown>>;
 
     expect(appleItems.length).toBeGreaterThan(0);
-    expect(bitcoinItems.length).toBeGreaterThan(0);
-    expect(appleItems[0].InstrumentID).not.toBe(bitcoinItems[0].InstrumentID);
+    expect(btcItems.length).toBeGreaterThan(0);
+    expect(appleItems[0].InstrumentID).not.toBe(btcItems[0].InstrumentID);
   });
 
-  it("should return empty or no results for nonsensical query", async () => {
+  it("should return empty or no results for nonsensical symbol", async () => {
     const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
         fields: "InstrumentID",
-        searchText: "xyzzznotaninstrument99999",
+        InternalSymbolFull: "XYZZZNOTASYMBOL99999",
         pageSize: 5,
         pageNumber: 1,
       },
