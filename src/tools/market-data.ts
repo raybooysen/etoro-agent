@@ -73,21 +73,52 @@ export function registerMarketDataTools(
 ): void {
   server.tool(
     "search_instruments",
-    "Search for instruments (stocks, crypto, ETFs, etc.) by text query or symbol",
+    "Search for instruments by symbol (exact match via API) or by name (client-side filter). Use symbol for tickers like 'AAPL', 'BTC'. Use name for display names like 'Apple', 'Bitcoin'.",
     {
-      query: z.string().describe("Search text (name, symbol, or ISIN)"),
+      query: z.string().describe("Search text — a ticker symbol (e.g. 'AAPL', 'BTC') or instrument name (e.g. 'Apple', 'Bitcoin')"),
+      filterBy: z.enum(["symbol", "name"]).default("symbol").describe("How to search: 'symbol' filters by InternalSymbolFull (exact, server-side), 'name' filters by InstrumentDisplayName (substring, client-side)"),
       page: z.number().int().positive().default(1).describe("Page number"),
       pageSize: z.number().int().min(1).max(100).default(20).describe("Results per page"),
     },
-    async ({ query, page, pageSize }) => {
+    async ({ query, filterBy, page, pageSize }) => {
       try {
-        const result = await client.get(paths.marketData("search"), {
+        if (filterBy === "symbol") {
+          // Server-side exact filter by symbol
+          const result = await client.get(paths.marketData("search"), {
+            fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+            InternalSymbolFull: query.toUpperCase(),
+            pageNumber: page,
+            pageSize,
+          });
+          return jsonContent(result);
+        }
+
+        // Client-side name filtering: fetch a larger page and filter locally
+        const fetchSize = Math.min(pageSize * 5, 100);
+        const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
           fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
-          searchText: query,
           pageNumber: page,
-          pageSize,
+          pageSize: fetchSize,
         });
-        return jsonContent(result);
+
+        const items = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
+        if (!items) return jsonContent(result);
+
+        const lowerQuery = query.toLowerCase();
+        const filtered = items.filter((item) => {
+          const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
+          const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
+          const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
+          return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
+        });
+
+        return jsonContent({
+          ...result,
+          items: filtered.slice(0, pageSize),
+          Items: undefined,
+          totalItems: filtered.length,
+          TotalItems: undefined,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return errorContent(`Failed to search instruments: ${message}`);
