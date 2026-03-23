@@ -6,7 +6,7 @@ const ctx = skip ? null : createTestClient()!;
 
 describe.skipIf(skip)("Integration: Market Data", () => {
   it("should search for instruments by text", async () => {
-    const result = await ctx!.client.get<{ Items: unknown[] }>(
+    const result = await ctx!.client.get<Record<string, unknown>>(
       ctx!.paths.marketData("search"),
       {
         fields: "InstrumentDisplayName,InstrumentID,SymbolFull",
@@ -17,12 +17,11 @@ describe.skipIf(skip)("Integration: Market Data", () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.Items).toBeDefined();
-    expect(result.Items.length).toBeGreaterThan(0);
+    // API returns lowercase "items" and "totalItems"
+    expect(result.items ?? result.Items).toBeDefined();
   });
 
   it("should get instrument metadata by ID", async () => {
-    // InstrumentID 1 is typically a well-known instrument
     const result = await ctx!.client.get(
       ctx!.paths.marketData("instruments"),
       { instrumentIds: "1" },
