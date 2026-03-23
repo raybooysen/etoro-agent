@@ -82,10 +82,11 @@ A complete flow from discovering an instrument to placing a trade.
 **Step 1 — Find the instrument:**
 ```bash
 # CLI
-etoro-cli market search "Apple" | jq '.Items[] | {InstrumentID, InstrumentDisplayName, SymbolFull}'
+etoro-cli market search "Apple" | jq '.items[] | {InstrumentID, InstrumentDisplayName, SymbolFull}'
 ```
 ```
 # MCP: search_instruments(query: "Apple")
+# Note: search auto-falls back to name matching if symbol search returns nothing
 ```
 
 **Step 2 — Check the current price:**
@@ -130,7 +131,7 @@ etoro-cli portfolio positions | jq '.Positions | length'
 # → number of open positions
 
 # P&L summary
-etoro-cli portfolio pnl | jq '{TotalPnL, TotalEquity}'
+etoro-cli portfolio pnl | jq '{TotalPnL, TotalEquity, UnrealizedPnL, Cash}'
 
 # Recent closed trades
 etoro-cli portfolio history --min-date 2025-01-01 --page-size 10 | jq '.Items[] | {InstrumentID, NetProfit, CloseDateTime}'

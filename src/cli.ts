@@ -5,6 +5,7 @@ import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles } from "./tools/market-data.js";
+import { flattenPnl } from "./tools/portfolio.js";
 
 // --- Arg parsing ---
 
@@ -83,7 +84,7 @@ Global options:
 Commands:
   identity                           Get authenticated user info
 
-  market search <query>              Search instruments
+  market search <query>              Search instruments (auto-falls back to name if symbol not found)
   market instrument <ids>            Get instrument metadata (comma-separated IDs)
   market rates <ids>                 Get current rates (comma-separated IDs)
   market candles <id>                Get OHLC candles
@@ -174,20 +175,27 @@ async function main() {
           const filterBy = flag(f, "filter-by") ?? "symbol";
           const searchPage = flagNum(f, "page") ?? 1;
           const searchPageSize = flagNum(f, "page-size") ?? 20;
+          const searchFields = "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID";
 
           if (filterBy === "symbol") {
-            return output(await client.get(paths.marketData("search"), {
-              fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+            // Try server-side exact symbol match first
+            const symbolResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+              fields: searchFields,
               InternalSymbolFull: searchQuery.toUpperCase(),
               pageNumber: searchPage,
               pageSize: searchPageSize,
-            }));
+            });
+            const symbolItems = (symbolResult.items ?? symbolResult.Items) as Array<Record<string, unknown>> | undefined;
+            if (symbolItems && symbolItems.length > 0) {
+              return output(symbolResult);
+            }
+            // Fall back to name search if symbol returned nothing
           }
 
           // Client-side name filtering
           const fetchSize = Math.min(searchPageSize * 5, 100);
           const searchResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-            fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+            fields: searchFields,
             pageNumber: searchPage,
             pageSize: fetchSize,
           });
@@ -235,7 +243,7 @@ async function main() {
         case "positions":
           return output(await client.get(paths.portfolio()));
         case "pnl":
-          return output(await client.get(paths.pnl()));
+          return output(flattenPnl(await client.get(paths.pnl())));
         case "order":
           return output(await client.get(
             paths.orderInfo(requireArg(rest, 0, "orderId")),
@@ -391,11 +399,13 @@ async function main() {
     case "discovery":
       switch (sub) {
         case "curated":
-          return output(await client.get(paths.discovery("curated-lists")));
-        case "recommendations":
-          return output(await client.get(
+          return output(await client.get(paths.discovery("curated-lists")) ?? []);
+        case "recommendations": {
+          const discoveryResult = await client.get(
             paths.discovery(`market-recommendations/${flagNum(f, "count") ?? 10}`),
-          ));
+          );
+          return output(discoveryResult ?? { recommendations: [], message: "No recommendations available for this account." });
+        }
         default:
           error(`Unknown discovery subcommand: ${sub}. Try: curated, recommendations`);
       }

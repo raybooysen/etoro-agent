@@ -327,4 +327,32 @@ describe("flattenCandles", () => {
     expect(flattenCandles(undefined)).toEqual([]);
     expect(flattenCandles("string")).toEqual([]);
   });
+
+  it("should remove duplicate lowercase volume and normalize to PascalCase", () => {
+    const nested = {
+      candles: [{
+        candles: [
+          { Open: 100, High: 110, Low: 95, Close: 105, volume: null, Volume: null },
+        ],
+      }],
+    };
+    const result = flattenCandles(nested);
+    const candle = result[0] as Record<string, unknown>;
+    expect(candle.Volume).toBe(0);
+    expect(candle).not.toHaveProperty("volume");
+  });
+
+  it("should use lowercase volume value when PascalCase is missing", () => {
+    const nested = {
+      candles: [{
+        candles: [
+          { Open: 100, High: 110, Low: 95, Close: 105, volume: 42 },
+        ],
+      }],
+    };
+    const result = flattenCandles(nested);
+    const candle = result[0] as Record<string, unknown>;
+    expect(candle.Volume).toBe(42);
+    expect(candle).not.toHaveProperty("volume");
+  });
 });

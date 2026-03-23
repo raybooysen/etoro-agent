@@ -19,8 +19,12 @@ export function flattenCandles(result: unknown): unknown[] {
   const arr = Array.isArray(data) ? data : [];
   return arr.map((c: unknown) => {
     if (typeof c !== "object" || c === null) return c;
-    const candle = c as Record<string, unknown>;
-    return { ...candle, Volume: candle.Volume ?? 0 };
+    const candle = { ...(c as Record<string, unknown>) };
+    // Normalize volume: use PascalCase, remove lowercase duplicate, default null to 0
+    const vol = candle.Volume ?? candle.volume ?? 0;
+    delete candle.volume;
+    candle.Volume = vol;
+    return candle;
   });
 }
 
@@ -101,21 +105,30 @@ export function registerMarketDataTools(
     },
     async ({ query, filterBy, page, pageSize }) => {
       try {
+        const searchFields = "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID";
+
         if (filterBy === "symbol") {
-          // Server-side exact filter by symbol
-          const result = await client.get(paths.marketData("search"), {
-            fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+          // Try server-side exact symbol match first
+          const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+            fields: searchFields,
             InternalSymbolFull: query.toUpperCase(),
             pageNumber: page,
             pageSize,
           });
-          return jsonContent(result);
+
+          // If symbol search found results, return them
+          const symbolItems = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
+          if (symbolItems && symbolItems.length > 0) {
+            return jsonContent(result);
+          }
+
+          // Fall back to name search if symbol returned nothing
         }
 
         // Client-side name filtering: fetch a larger page and filter locally
         const fetchSize = Math.min(pageSize * 5, 100);
         const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-          fields: "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID",
+          fields: searchFields,
           pageNumber: page,
           pageSize: fetchSize,
         });

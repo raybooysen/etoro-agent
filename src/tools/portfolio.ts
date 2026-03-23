@@ -4,6 +4,25 @@ import { EtoroClient } from "../client.js";
 import type { PathResolver } from "../utils/path-resolver.js";
 import { jsonContent, errorContent } from "../utils/formatters.js";
 
+/** Flatten nested P&L response into a simple summary object. */
+export function flattenPnl(result: unknown): unknown {
+  if (typeof result !== "object" || result === null) return result;
+  const obj = result as Record<string, unknown>;
+
+  // API returns { clientPortfolio: { credit, unrealizedPnL, ... }, ... }
+  // Flatten to top-level with consistent field names
+  const portfolio = (obj.clientPortfolio ?? obj.ClientPortfolio) as Record<string, unknown> | undefined;
+  if (!portfolio) return result;
+
+  return {
+    TotalEquity: portfolio.credit ?? portfolio.Credit ?? portfolio.totalEquity ?? portfolio.TotalEquity,
+    TotalPnL: portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL ?? portfolio.totalPnL ?? portfolio.TotalPnL,
+    UnrealizedPnL: portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL,
+    Cash: portfolio.credit ?? portfolio.Credit,
+    ...portfolio,
+  };
+}
+
 export function registerPortfolioTools(
   server: McpServer,
   client: EtoroClient,
@@ -34,6 +53,9 @@ export function registerPortfolioTools(
             break;
         }
         const result = await client.get(path);
+        if (view === "pnl") {
+          return jsonContent(flattenPnl(result));
+        }
         return jsonContent(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
