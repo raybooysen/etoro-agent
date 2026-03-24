@@ -15,7 +15,7 @@ export function flattenPnl(result: unknown): unknown {
   if (!portfolio) return result;
 
   return {
-    TotalEquity: portfolio.credit ?? portfolio.Credit ?? portfolio.totalEquity ?? portfolio.TotalEquity,
+    TotalEquity: (Number(portfolio.credit ?? portfolio.Credit ?? 0)) + (Number(portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL ?? 0)),
     TotalPnL: portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL ?? portfolio.totalPnL ?? portfolio.TotalPnL,
     UnrealizedPnL: portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL,
     Cash: portfolio.credit ?? portfolio.Credit,
