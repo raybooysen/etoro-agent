@@ -114,28 +114,25 @@ export function registerMarketDataTools(
 ): void {
   server.tool(
     "search_instruments",
-    "Search for instruments by symbol (exact match via API) or by name (client-side filter). Use symbol for tickers like 'AAPL', 'BTC'. Use name for display names like 'Apple', 'Bitcoin'.",
+    "Search for instruments by symbol or name. Both are server-side filters. Use symbol for tickers like 'AAPL', 'BTC'. Use name for display names like 'Apple', 'Bitcoin'.",
     {
       query: z.string().describe("Search text — a ticker symbol (e.g. 'AAPL', 'BTC') or instrument name (e.g. 'Apple', 'Bitcoin')"),
-      filterBy: z.enum(["symbol", "name"]).default("symbol").describe("How to search: 'symbol' filters by InternalSymbolFull (exact, server-side), 'name' filters by InstrumentDisplayName (substring, client-side)"),
+      filterBy: z.enum(["symbol", "name"]).default("symbol").describe("How to search: 'symbol' filters by InternalSymbolFull (exact), 'name' filters by internalInstrumentDisplayName (exact)"),
       page: z.number().int().positive().default(1).describe("Page number"),
       pageSize: z.number().int().min(1).max(100).default(20).describe("Results per page"),
     },
     async ({ query, filterBy, page, pageSize }) => {
       try {
-        const searchFields = "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID";
-
         if (filterBy === "symbol") {
-          // Try server-side exact symbol match first
+          // Server-side exact symbol match
           const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-            fields: searchFields,
             InternalSymbolFull: query.toUpperCase(),
             pageNumber: page,
             pageSize,
           });
 
           // If symbol search found results, return them
-          const symbolItems = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
+          const symbolItems = result.items as Array<Record<string, unknown>> | undefined;
           if (symbolItems && symbolItems.length > 0) {
             return jsonContent(result);
           }
@@ -143,44 +140,13 @@ export function registerMarketDataTools(
           // Fall back to name search if symbol returned nothing
         }
 
-        // Client-side name filtering: fetch up to 3 pages of 100 items and filter locally
-        const lowerQuery = query.toLowerCase();
-        const allFiltered: Array<Record<string, unknown>> = [];
-        const maxPages = 3;
-        let lastResult: Record<string, unknown> | undefined;
-
-        for (let p = 1; p <= maxPages; p++) {
-          const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-            fields: searchFields,
-            pageNumber: p,
-            pageSize: 100,
-          });
-          lastResult = result;
-
-          const items = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
-          if (!items || items.length === 0) break;
-
-          const filtered = items.filter((item) => {
-            const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
-            const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
-            const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
-            return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
-          });
-          allFiltered.push(...filtered);
-
-          // Stop early if we have enough results or the page was not full
-          if (allFiltered.length >= pageSize || items.length < 100) break;
-        }
-
-        if (!lastResult) return jsonContent({ items: [], totalItems: 0 });
-
-        return jsonContent({
-          ...lastResult,
-          items: allFiltered.slice(0, pageSize),
-          Items: undefined,
-          totalItems: allFiltered.length,
-          TotalItems: undefined,
+        // Server-side name filter via internalInstrumentDisplayName
+        const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+          internalInstrumentDisplayName: query,
+          pageNumber: page,
+          pageSize,
         });
+        return jsonContent(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return errorContent(`Failed to search instruments: ${message}`);

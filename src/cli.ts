@@ -194,53 +194,27 @@ async function main() {
           const filterBy = flag(f, "filter-by") ?? "symbol";
           const searchPage = flagNum(f, "page") ?? 1;
           const searchPageSize = flagNum(f, "page-size") ?? 20;
-          const searchFields = "InternalSymbolFull,SymbolFull,InstrumentDisplayName,InstrumentTypeID,ExchangeID,InstrumentID";
 
           if (filterBy === "symbol") {
-            // Try server-side exact symbol match first
+            // Server-side exact symbol match
             const symbolResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-              fields: searchFields,
               InternalSymbolFull: searchQuery.toUpperCase(),
               pageNumber: searchPage,
               pageSize: searchPageSize,
             });
-            const symbolItems = (symbolResult.items ?? symbolResult.Items) as Array<Record<string, unknown>> | undefined;
+            const symbolItems = symbolResult.items as Array<Record<string, unknown>> | undefined;
             if (symbolItems && symbolItems.length > 0) {
               return output(symbolResult);
             }
             // Fall back to name search if symbol returned nothing
           }
 
-          // Client-side name filtering: fetch up to 3 pages of 100 items
-          const lowerQuery = searchQuery.toLowerCase();
-          const allFiltered: Array<Record<string, unknown>> = [];
-          const maxPages = 3;
-          let lastResult: Record<string, unknown> | undefined;
-
-          for (let p = 1; p <= maxPages; p++) {
-            const pageResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-              fields: searchFields,
-              pageNumber: p,
-              pageSize: 100,
-            });
-            lastResult = pageResult;
-
-            const pageItems = (pageResult.items ?? pageResult.Items) as Array<Record<string, unknown>> | undefined;
-            if (!pageItems || pageItems.length === 0) break;
-
-            const filtered = pageItems.filter((item) => {
-              const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
-              const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
-              const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
-              return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
-            });
-            allFiltered.push(...filtered);
-
-            if (allFiltered.length >= searchPageSize || pageItems.length < 100) break;
-          }
-
-          if (!lastResult) return output({ items: [], totalItems: 0 });
-          return output({ ...lastResult, items: allFiltered.slice(0, searchPageSize), Items: undefined, totalItems: allFiltered.length, TotalItems: undefined });
+          // Server-side name filter via internalInstrumentDisplayName
+          return output(await client.get(paths.marketData("search"), {
+            internalInstrumentDisplayName: searchQuery,
+            pageNumber: searchPage,
+            pageSize: searchPageSize,
+          }));
         }
         case "instrument":
           return output(await client.get(paths.marketData("instruments"), {
