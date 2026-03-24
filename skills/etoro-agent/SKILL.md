@@ -118,7 +118,7 @@ etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 --stop-loss 
 
 **Step 5 — Verify the position:**
 ```bash
-etoro-cli portfolio positions | jq '.Positions[] | select(.InstrumentID == 1)'
+etoro-cli portfolio positions | jq '.[] | select(.instrumentID == 1)'
 ```
 ```
 # MCP: get_portfolio(view: "positions")
@@ -137,7 +137,7 @@ etoro-cli portfolio positions | jq '.Positions | length'
 etoro-cli portfolio pnl | jq '{TotalPnL, TotalEquity, UnrealizedPnL, Cash}'
 
 # Recent closed trades
-etoro-cli portfolio history --min-date 2025-01-01 --page-size 10 | jq '.Items[] | {InstrumentID, NetProfit, CloseDateTime}'
+etoro-cli portfolio history --min-date 2025-01-01 --page-size 10 | jq '.items[] | {instrumentID, netProfit, closeDateTime}'
 
 # Check a specific order status
 etoro-cli portfolio order 12345678
@@ -150,13 +150,13 @@ Find and evaluate popular investors to copy.
 **Step 1 — Discover top performers:**
 ```bash
 etoro-cli social search --period CurrYear --popular-investor --page-size 10 | \
-  jq '.Items[] | {UserName, Gain, RiskScore, Copiers}'
+  jq '.items[] | {userName, gain, riskScore, copiers}'
 ```
 
 **Step 2 — Deep-dive a trader:**
 ```bash
 # Their public portfolio
-etoro-cli social user jaynemesis portfolio | jq '.[] | {InstrumentID, Direction, Value}'
+etoro-cli social user jaynemesis portfolio | jq '.[] | {instrumentID, direction, value}'
 
 # Historical gain metrics
 etoro-cli social user jaynemesis gain
@@ -167,7 +167,7 @@ etoro-cli social user jaynemesis tradeinfo
 
 **Step 3 — Read their feed:**
 ```bash
-etoro-cli feed user 12345 --take 5 | jq '.Items[].Message'
+etoro-cli feed user 12345 --take 5 | jq '.items[].message'
 ```
 
 ### Workflow 4: Watchlist Management
@@ -180,8 +180,8 @@ etoro-cli watchlist create "AI Stocks" | jq '.WatchlistId'
 # → "abc-123-def"
 
 # Find instruments to add
-NVDA_ID=$(etoro-cli market search "NVIDIA" | jq '.items[0].InstrumentID')
-MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.items[0].InstrumentID')
+NVDA_ID=$(etoro-cli market search "NVIDIA" | jq '.items[0].instrumentId')
+MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.items[0].instrumentId')
 AMZN_ID=$(etoro-cli market search "Amazon" | jq '.items[0].instrumentId')
 
 # Add instruments
@@ -202,9 +202,9 @@ A bash script that checks prices and reports:
 #!/bin/bash
 # Check if any watched instruments moved >2% today
 # Look up IDs first:
-# etoro-cli market search "Apple" | jq '.items[0].InstrumentID'
-# etoro-cli market search "Tesla" | jq '.items[0].InstrumentID'
-# etoro-cli market search "Bitcoin" | jq '.items[0].InstrumentID'
+# etoro-cli market search "Apple" | jq '.items[0].instrumentId'
+# etoro-cli market search "Tesla" | jq '.items[0].instrumentId'
+# etoro-cli market search "Bitcoin" | jq '.items[0].instrumentId'
 INSTRUMENTS="<apple_id>,<tesla_id>,<bitcoin_id>"
 
 etoro-cli market candles <apple_id> --interval OneDay --count 2 | \
@@ -344,6 +344,8 @@ etoro-cli watchlist create <name>              # create new
 etoro-cli watchlist delete <id>                # delete
 etoro-cli watchlist add-items <id> <ids>       # add instruments (comma-separated)
 etoro-cli watchlist remove-items <id> <ids>    # remove instruments
+etoro-cli watchlist rename <id> <name>         # rename a watchlist
+etoro-cli watchlist rank <id> <rank>           # reorder a watchlist
 ```
 
 ### Feeds
@@ -520,7 +522,7 @@ CLI returns descriptive errors for missing required arguments:
 
 Never guess instrument IDs. Always search first:
 ```bash
-etoro-cli market search "NVIDIA" | jq '.items[0].InstrumentID'
+etoro-cli market search "NVIDIA" | jq '.items[0].instrumentId'
 ```
 Then use the returned ID in subsequent commands.
 
@@ -534,16 +536,16 @@ etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 --stop-loss 
 
 Verify the position exists and get the correct position ID:
 ```bash
-etoro-cli portfolio positions | jq '.Positions[] | {PositionID, InstrumentID, IsBuy, Amount}'
+etoro-cli portfolio positions | jq '.[] | {positionID, instrumentID, isBuy, amount}'
 ```
 
 ### Batch rate requests
 
 ```bash
 # Look up IDs first, then batch them in a single call
-APPLE_ID=$(etoro-cli market search "Apple" | jq '.items[0].InstrumentID')
-TESLA_ID=$(etoro-cli market search "Tesla" | jq '.items[0].InstrumentID')
-MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.items[0].InstrumentID')
+APPLE_ID=$(etoro-cli market search "Apple" | jq '.items[0].instrumentId')
+TESLA_ID=$(etoro-cli market search "Tesla" | jq '.items[0].instrumentId')
+MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.items[0].instrumentId')
 
 # GOOD: single call for multiple instruments
 etoro-cli market rates "$APPLE_ID,$TESLA_ID,$MSFT_ID"
@@ -569,7 +571,7 @@ etoro-cli market ref exchanges | jq '.[] | {ExchangeID, ExchangeName}'
 
 **Do NOT hardcode instrument IDs** -- they are not guaranteed stable across environments and may differ between demo and real.
 
-Always use `search_instruments` or the CLI to discover the current InstrumentID before any operation:
+Always use `search_instruments` or the CLI to discover the current instrument ID before any operation:
 
 ```bash
 # Find an instrument's current ID

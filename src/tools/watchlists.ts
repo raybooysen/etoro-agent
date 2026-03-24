@@ -54,7 +54,7 @@ export function registerWatchlistTools(
             if (!args.watchlistId || !args.name) return errorContent("watchlistId and name are required for rename");
             const result = await client.put(
               paths.watchlists(`${args.watchlistId}/rename`),
-              undefined,
+              { name: args.name },
             );
             return jsonContent(result);
           }
@@ -106,7 +106,7 @@ export function registerWatchlistTools(
             if (!args.name) return errorContent("name is required");
             const result = await client.post(
               paths.watchlists("newasdefault-watchlist"),
-              undefined,
+              { name: args.name },
             );
             return jsonContent(result);
           }
