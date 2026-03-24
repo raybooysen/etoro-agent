@@ -4,6 +4,34 @@ import { EtoroClient } from "../client.js";
 import type { PathResolver } from "../utils/path-resolver.js";
 import { jsonContent, errorContent } from "../utils/formatters.js";
 
+/** Look up InstrumentID for a position from the portfolio response. */
+export function lookupInstrumentId(portfolio: unknown, positionId: number): number | undefined {
+  if (typeof portfolio !== "object" || portfolio === null) return undefined;
+  const obj = portfolio as Record<string, unknown>;
+
+  let positions: unknown[];
+  if (Array.isArray(portfolio)) {
+    positions = portfolio;
+  } else if (Array.isArray(obj.positions)) {
+    positions = obj.positions;
+  } else if (Array.isArray(obj.Positions)) {
+    positions = obj.Positions;
+  } else {
+    return undefined;
+  }
+
+  for (const pos of positions) {
+    if (typeof pos !== "object" || pos === null) continue;
+    const p = pos as Record<string, unknown>;
+    const pid = p.positionID ?? p.PositionID ?? p.positionId;
+    if (Number(pid) === positionId) {
+      const iid = p.instrumentID ?? p.InstrumentID ?? p.instrumentId;
+      return iid !== undefined ? Number(iid) : undefined;
+    }
+  }
+  return undefined;
+}
+
 export function registerTradingTools(
   server: McpServer,
   client: EtoroClient,
@@ -63,13 +91,23 @@ export function registerTradingTools(
     },
     async ({ positionId, InstrumentID, UnitsToDeduct }) => {
       try {
-        const body: Record<string, unknown> = {};
-        if (InstrumentID !== undefined) body.InstrumentID = InstrumentID;
+        let instrumentId = InstrumentID;
+
+        // Auto-lookup InstrumentID from portfolio if not provided
+        if (instrumentId === undefined) {
+          const portfolio = await client.get<unknown>(paths.portfolio());
+          instrumentId = lookupInstrumentId(portfolio, positionId);
+          if (instrumentId === undefined) {
+            return errorContent(`Could not find position ${positionId} in portfolio. Provide InstrumentID explicitly.`);
+          }
+        }
+
+        const body: Record<string, unknown> = { InstrumentID: instrumentId };
         if (UnitsToDeduct !== undefined) body.UnitsToDeduct = UnitsToDeduct;
 
         const result = await client.post(
           paths.trading(`market-close-orders/positions/${positionId}`),
-          Object.keys(body).length > 0 ? body : undefined,
+          body,
         );
         return jsonContent(result);
       } catch (error) {

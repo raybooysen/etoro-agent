@@ -6,6 +6,7 @@ import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles } from "./tools/market-data.js";
 import { flattenPnl, flattenPositions } from "./tools/portfolio.js";
+import { lookupInstrumentId } from "./tools/trading.js";
 import { formatTable } from "./utils/table-formatter.js";
 
 // --- Arg parsing ---
@@ -316,10 +317,21 @@ async function main() {
           if (flag(f, "take-profit")) body.TakeProfitRate = Number(flag(f, "take-profit"));
           return output(await client.post(paths.trading("market-open-orders/by-units"), body));
         }
-        case "close":
+        case "close": {
+          const closePositionId = Number(requireArg(rest, 0, "positionId"));
+          let closeInstrumentId = flagNum(f, "instrument");
+          if (closeInstrumentId === undefined) {
+            const portfolio = await client.get<unknown>(paths.portfolio());
+            closeInstrumentId = lookupInstrumentId(portfolio, closePositionId);
+            if (closeInstrumentId === undefined) {
+              error(`Could not find position ${closePositionId} in portfolio. Use --instrument <id> to specify.`);
+            }
+          }
           return output(await client.post(
-            paths.trading(`market-close-orders/positions/${requireArg(rest, 0, "positionId")}`),
+            paths.trading(`market-close-orders/positions/${closePositionId}`),
+            { InstrumentID: closeInstrumentId },
           ));
+        }
         case "limit": {
           const isBuy = f["buy"] === "true" ? true : f["sell"] === "true" ? false : undefined;
           if (isBuy === undefined) error("Must specify --buy or --sell");
