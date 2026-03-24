@@ -9,13 +9,17 @@ export function lookupInstrumentId(portfolio: unknown, positionId: number): numb
   if (typeof portfolio !== "object" || portfolio === null) return undefined;
   const obj = portfolio as Record<string, unknown>;
 
+  // API returns { clientPortfolio: { positions: [...] } } — unwrap if needed
+  const clientPortfolio = (obj.clientPortfolio ?? obj.ClientPortfolio) as Record<string, unknown> | undefined;
+  const source = clientPortfolio ?? obj;
+
   let positions: unknown[];
   if (Array.isArray(portfolio)) {
     positions = portfolio;
-  } else if (Array.isArray(obj.positions)) {
-    positions = obj.positions;
-  } else if (Array.isArray(obj.Positions)) {
-    positions = obj.Positions;
+  } else if (Array.isArray((source as Record<string, unknown>).positions)) {
+    positions = (source as Record<string, unknown>).positions as unknown[];
+  } else if (Array.isArray((source as Record<string, unknown>).Positions)) {
+    positions = (source as Record<string, unknown>).Positions as unknown[];
   } else {
     return undefined;
   }
