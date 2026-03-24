@@ -11,17 +11,25 @@ export class EtoroClient {
   private readonly config: EtoroConfig;
   private readonly rateLimiter: RateLimiter;
   private readonly fetchFn: typeof fetch;
+  private readonly verbose: boolean;
 
   constructor(
     config: EtoroConfig,
     options?: {
       rateLimiter?: RateLimiter;
       fetchFn?: typeof fetch;
+      verbose?: boolean;
     },
   ) {
     this.config = config;
     this.rateLimiter = options?.rateLimiter ?? new RateLimiter();
     this.fetchFn = options?.fetchFn ?? globalThis.fetch;
+    this.verbose = options?.verbose ?? false;
+  }
+
+  /** Get current rate limit status for all buckets. */
+  getRateLimitStatus() {
+    return this.rateLimiter.getAllStatus();
   }
 
   private buildHeaders(): Record<string, string> {
@@ -44,6 +52,11 @@ export class EtoroClient {
   ): Promise<T> {
     const rateLimitType = method === "GET" ? "GET" : "WRITE";
     await this.rateLimiter.acquire(rateLimitType);
+
+    if (this.verbose) {
+      const status = this.rateLimiter.getStatus(rateLimitType);
+      process.stderr.write(`[rate-limit] ${rateLimitType} ${status.remaining}/${status.limit} remaining\n`);
+    }
 
     const url = new URL(path, BASE_URL);
     if (options?.params) {
@@ -82,25 +95,44 @@ export class EtoroClient {
         }
 
         if (!response.ok) {
+          const retryAfter = response.headers.get("Retry-After");
+          const contentType = response.headers.get("Content-Type") ?? "";
           const body = await response.text();
+
           let parsed: unknown;
-          try {
-            parsed = JSON.parse(body);
-          } catch {
-            parsed = body;
-          }
-          const errorCode =
-            typeof parsed === "object" &&
-            parsed !== null &&
-            "errorCode" in parsed
-              ? String((parsed as Record<string, unknown>).errorCode)
-              : undefined;
-          const message =
-            typeof parsed === "object" &&
-            parsed !== null &&
-            "message" in parsed
-              ? String((parsed as Record<string, unknown>).message)
+          let errorCode: string | undefined;
+          let message: string;
+
+          if (contentType.includes("text/html") || (typeof body === "string" && body.trimStart().startsWith("<"))) {
+            // Cloudflare or HTML error page — normalize to clean JSON
+            message = response.status === 429
+              ? `Rate limited (HTTP 429). ${retryAfter ? `Retry after ${retryAfter}s.` : "Try again later."}`
               : `HTTP ${response.status}: ${response.statusText}`;
+            parsed = {
+              error: message,
+              statusCode: response.status,
+              ...(retryAfter ? { retryAfter: parseInt(retryAfter, 10) } : {}),
+            };
+          } else {
+            try {
+              parsed = JSON.parse(body);
+            } catch {
+              parsed = body;
+            }
+            errorCode =
+              typeof parsed === "object" &&
+              parsed !== null &&
+              "errorCode" in parsed
+                ? String((parsed as Record<string, unknown>).errorCode)
+                : undefined;
+            message =
+              typeof parsed === "object" &&
+              parsed !== null &&
+              "message" in parsed
+                ? String((parsed as Record<string, unknown>).message)
+                : `HTTP ${response.status}: ${response.statusText}`;
+          }
+
           throw new EtoroApiError(message, response.status, parsed, errorCode);
         }
 

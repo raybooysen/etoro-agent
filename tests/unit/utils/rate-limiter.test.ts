@@ -157,4 +157,42 @@ describe("RateLimiter", () => {
     await promise;
     expect(resolved).toBe(true);
   });
+
+  describe("getStatus", () => {
+    it("returns full remaining when no requests made", () => {
+      const limiter = new RateLimiter({ getLimit: 60, writeLimit: 20 });
+      const status = limiter.getStatus("GET");
+      expect(status.remaining).toBe(60);
+      expect(status.limit).toBe(60);
+      expect(status.resetInMs).toBe(0);
+    });
+
+    it("decrements remaining after acquire", async () => {
+      const limiter = new RateLimiter({ getLimit: 60, writeLimit: 20 });
+      await limiter.acquire("GET");
+      const status = limiter.getStatus("GET");
+      expect(status.remaining).toBe(59);
+      expect(status.limit).toBe(60);
+      expect(status.resetInMs).toBeGreaterThan(0);
+    });
+
+    it("tracks GET and WRITE independently via getAllStatus", async () => {
+      const limiter = new RateLimiter({ getLimit: 60, writeLimit: 20 });
+      await limiter.acquire("GET");
+      await limiter.acquire("GET");
+      await limiter.acquire("WRITE");
+
+      const allStatus = limiter.getAllStatus();
+      expect(allStatus.GET.remaining).toBe(58);
+      expect(allStatus.WRITE.remaining).toBe(19);
+    });
+
+    it("resets remaining after reset()", async () => {
+      const limiter = new RateLimiter({ getLimit: 60, writeLimit: 20 });
+      await limiter.acquire("GET");
+      limiter.reset();
+      const status = limiter.getStatus("GET");
+      expect(status.remaining).toBe(60);
+    });
+  });
 });

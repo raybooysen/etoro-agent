@@ -6,6 +6,7 @@ import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles } from "./tools/market-data.js";
 import { flattenPnl } from "./tools/portfolio.js";
+import { formatTable } from "./utils/table-formatter.js";
 
 // --- Arg parsing ---
 
@@ -63,7 +64,16 @@ function requireArg(args: string[], index: number, name: string): string {
 
 // --- Output ---
 
+let outputFormat: "json" | "table" = "json";
+
 function output(data: unknown): void {
+  if (outputFormat === "table") {
+    const table = formatTable(data);
+    if (table) {
+      console.log(table);
+      return;
+    }
+  }
   console.log(JSON.stringify(data, null, 2));
 }
 
@@ -80,6 +90,8 @@ Global options:
   --api-key <key>          eToro API key (or ETORO_API_KEY env var)
   --user-key <key>         eToro user key (or ETORO_USER_KEY env var)
   --environment <env>      demo or real (default: demo)
+  --verbose                Show rate limit status on each request
+  --output <format>        Output format: json (default) or table
 
 Commands:
   identity                           Get authenticated user info
@@ -146,6 +158,8 @@ Commands:
   discovery recommendations          Personalized recommendations
     --count <n>                        Number of items (default: 10)
 
+  rate-limit                         Show current rate limit status
+
   help                               Show this help message
 `;
 
@@ -161,7 +175,10 @@ async function main() {
   }
 
   const config = loadConfig();
-  const client = new EtoroClient(config);
+  const verbose = f["verbose"] === "true";
+  const fmt = flag(f, "output");
+  if (fmt === "table") outputFormat = "table";
+  const client = new EtoroClient(config, { verbose });
   const paths = createPathResolver(config.environment);
 
   switch (command) {
@@ -410,6 +427,14 @@ async function main() {
           error(`Unknown discovery subcommand: ${sub}. Try: curated, recommendations`);
       }
       break;
+
+    case "rate-limit": {
+      const status = client.getRateLimitStatus();
+      return output({
+        GET: { remaining: status.GET.remaining, limit: status.GET.limit, resetInSeconds: Math.ceil(status.GET.resetInMs / 1000) },
+        WRITE: { remaining: status.WRITE.remaining, limit: status.WRITE.limit, resetInSeconds: Math.ceil(status.WRITE.resetInMs / 1000) },
+      });
+    }
 
     default:
       error(`Unknown command: ${command}. Run 'etoro-cli help' for usage.`);

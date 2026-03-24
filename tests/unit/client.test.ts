@@ -261,6 +261,62 @@ describe("EtoroClient", () => {
       }
     });
 
+    it("normalizes HTML error responses (e.g. Cloudflare) to clean JSON", async () => {
+      vi.useFakeTimers();
+      const htmlBody = "<html><body><h1>429 Too Many Requests</h1></body></html>";
+      // Return 429 HTML for all attempts so retries exhaust
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(new Response(htmlBody, {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "Content-Type": "text/html", "Retry-After": "30" },
+        })),
+      );
+
+      const promise = client.get("/api/v1/test");
+      const assertion = expect(promise).rejects.toThrow(EtoroApiError);
+      await vi.runAllTimersAsync();
+
+      try {
+        await promise;
+      } catch (error) {
+        const apiError = error as EtoroApiError;
+        expect(apiError.statusCode).toBe(429);
+        expect(apiError.message).toContain("Rate limited");
+        expect(apiError.message).toContain("30s");
+        const body = apiError.body as Record<string, unknown>;
+        expect(body.statusCode).toBe(429);
+        expect(body.retryAfter).toBe(30);
+      }
+
+      await assertion;
+      vi.useRealTimers();
+    });
+
+    it("normalizes HTML 500 errors without Content-Type header", async () => {
+      const htmlBody = "<!DOCTYPE html><html><body>Server Error</body></html>";
+      mockFetch.mockResolvedValueOnce(
+        new Response(htmlBody, {
+          status: 500,
+          statusText: "Internal Server Error",
+          headers: {},
+        }),
+      );
+
+      try {
+        await client.get("/api/v1/test");
+        expect.unreachable("Should have thrown");
+      } catch (error) {
+        const apiError = error as EtoroApiError;
+        expect(apiError).toBeInstanceOf(EtoroApiError);
+        expect(apiError.statusCode).toBe(500);
+        expect(apiError.message).toBe("HTTP 500: Internal Server Error");
+        // Body should be clean JSON, not raw HTML
+        const body = apiError.body as Record<string, unknown>;
+        expect(body.statusCode).toBe(500);
+      }
+    });
+
     it("does NOT retry non-429 errors", async () => {
       const errorBody = { message: "Bad request" };
       mockFetch.mockResolvedValueOnce(jsonResponse(errorBody, 400));
