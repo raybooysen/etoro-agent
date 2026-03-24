@@ -82,11 +82,14 @@ A complete flow from discovering an instrument to placing a trade.
 **Step 1 — Find the instrument:**
 ```bash
 # CLI
-etoro-cli market search "Apple" | jq '.items[] | {InstrumentID, InstrumentDisplayName, SymbolFull}'
+etoro-cli market search "AAPL" | jq '.items[] | {instrumentId}'
+
+# Or search by name (client-side filter)
+etoro-cli market search "Apple" --filter-by name | jq '.items[]'
 ```
 ```
-# MCP: search_instruments(query: "Apple")
-# Note: search auto-falls back to name matching if symbol search returns nothing
+# MCP: search_instruments(query: "AAPL")  — exact symbol match (default)
+# MCP: search_instruments(query: "Apple", filterBy: "name")  — name substring match
 ```
 
 **Step 2 — Check the current price:**
@@ -177,9 +180,9 @@ etoro-cli watchlist create "AI Stocks" | jq '.WatchlistId'
 # → "abc-123-def"
 
 # Find instruments to add
-NVDA_ID=$(etoro-cli market search "NVIDIA" | jq '.Items[0].InstrumentID')
-MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.Items[0].InstrumentID')
-AMZN_ID=$(etoro-cli market search "Amazon" | jq '.Items[0].InstrumentID')
+NVDA_ID=$(etoro-cli market search "NVIDIA" | jq '.items[0].InstrumentID')
+MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.items[0].InstrumentID')
+AMZN_ID=$(etoro-cli market search "Amazon" | jq '.items[0].instrumentId')
 
 # Add instruments
 etoro-cli watchlist add-items abc-123-def "$NVDA_ID,$MSFT_ID,$AMZN_ID"
@@ -199,9 +202,9 @@ A bash script that checks prices and reports:
 #!/bin/bash
 # Check if any watched instruments moved >2% today
 # Look up IDs first:
-# etoro-cli market search "Apple" | jq '.Items[0].InstrumentID'
-# etoro-cli market search "Tesla" | jq '.Items[0].InstrumentID'
-# etoro-cli market search "Bitcoin" | jq '.Items[0].InstrumentID'
+# etoro-cli market search "Apple" | jq '.items[0].InstrumentID'
+# etoro-cli market search "Tesla" | jq '.items[0].InstrumentID'
+# etoro-cli market search "Bitcoin" | jq '.items[0].InstrumentID'
 INSTRUMENTS="<apple_id>,<tesla_id>,<bitcoin_id>"
 
 etoro-cli market candles <apple_id> --interval OneDay --count 2 | \
@@ -226,8 +229,11 @@ etoro-cli identity
 ### Market Data
 
 ```bash
-# Search instruments by name or symbol
-etoro-cli market search <query> [--page N] [--page-size N]
+# Search instruments by symbol (default, exact server-side match)
+etoro-cli market search <symbol> [--page N] [--page-size N]
+
+# Search instruments by name (client-side substring match)
+etoro-cli market search <name> --filter-by name [--page N] [--page-size N]
 
 # Get instrument metadata
 etoro-cli market instrument <ids>              # comma-separated IDs
@@ -349,9 +355,9 @@ etoro-cli discovery recommendations [--count N] # personalized picks (default: 1
 | Tool | Purpose | Key Parameters |
 |------|---------|----------------|
 | `get_identity` | Account info | — |
-| `search_instruments` | Find instruments | `query`, `page`, `pageSize` |
+| `search_instruments` | Find instruments | `query`, `filterBy` (symbol/name), `page`, `pageSize` |
 | `get_instruments` | Instrument metadata | `instrumentIds` (comma-sep) |
-| `get_rates` | Live prices or closing prices | `instrumentIds`, `type` (current/closing_price) |
+| `get_rates` | Live prices or closing prices | `instrumentIds`, `type` (current/closing_price), `includeNames` (opt-in) |
 | `get_candles` | OHLC history | `instrumentId`, `interval`, `count`, `direction` |
 | `get_reference_data` | Cached reference data | `type` (instrument_types/exchanges/stocks_industries) |
 | `get_portfolio` | Positions, P&L, order status | `view` (positions/pnl/order), `orderId` |
@@ -499,7 +505,7 @@ CLI returns descriptive errors for missing required arguments:
 
 Never guess instrument IDs. Always search first:
 ```bash
-etoro-cli market search "NVIDIA" | jq '.Items[0].InstrumentID'
+etoro-cli market search "NVIDIA" | jq '.items[0].InstrumentID'
 ```
 Then use the returned ID in subsequent commands.
 
@@ -520,9 +526,9 @@ etoro-cli portfolio positions | jq '.Positions[] | {PositionID, InstrumentID, Is
 
 ```bash
 # Look up IDs first, then batch them in a single call
-APPLE_ID=$(etoro-cli market search "Apple" | jq '.Items[0].InstrumentID')
-TESLA_ID=$(etoro-cli market search "Tesla" | jq '.Items[0].InstrumentID')
-MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.Items[0].InstrumentID')
+APPLE_ID=$(etoro-cli market search "Apple" | jq '.items[0].InstrumentID')
+TESLA_ID=$(etoro-cli market search "Tesla" | jq '.items[0].InstrumentID')
+MSFT_ID=$(etoro-cli market search "Microsoft" | jq '.items[0].InstrumentID')
 
 # GOOD: single call for multiple instruments
 etoro-cli market rates "$APPLE_ID,$TESLA_ID,$MSFT_ID"
@@ -552,8 +558,8 @@ Always use `search_instruments` or the CLI to discover the current InstrumentID 
 
 ```bash
 # Find an instrument's current ID
-etoro-cli market search "Tesla" | jq '.Items[0] | {InstrumentID, InstrumentDisplayName, SymbolFull}'
+etoro-cli market search "Tesla" | jq '.items[0].instrumentId'
 
 # Search by symbol
-etoro-cli market search "AAPL" | jq '.Items[0].InstrumentID'
+etoro-cli market search "AAPL" | jq '.items[0].instrumentId'
 ```

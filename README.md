@@ -117,17 +117,17 @@ etoro-cli identity
 
 #### Search instruments
 
-Search for stocks, crypto, ETFs, indices, commodities, and currencies by name or symbol.
+Search for stocks, crypto, ETFs, indices, commodities, and currencies by symbol or name.
 
 ```bash
-# Search by name
-etoro-cli market search Apple
-
-# Search by symbol
+# Search by symbol (default — exact server-side match)
 etoro-cli market search AAPL
 
+# Search by name (client-side substring match)
+etoro-cli market search Apple --filter-by name
+
 # Paginate results
-etoro-cli market search Tesla --page 1 --page-size 5
+etoro-cli market search TSLA --page 1 --page-size 5
 ```
 
 #### Get instrument metadata
@@ -230,7 +230,7 @@ All trading commands route to demo or real API paths based on your configured en
 etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100
 
 # Short sell $50 of an instrument with 2x leverage (look up ID first)
-# etoro-cli market search "Tesla" | jq '.Items[0].InstrumentID'
+# etoro-cli market search "Tesla" | jq '.items[0].instrumentId'
 etoro-cli trade open --instrument <instrument_id> --sell --leverage 2 --amount 50
 
 # With stop loss and take profit
@@ -242,7 +242,7 @@ etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 \
 
 ```bash
 # Buy 0.5 units of an instrument (look up ID first)
-# etoro-cli market search "Bitcoin" | jq '.Items[0].InstrumentID'
+# etoro-cli market search "Bitcoin" | jq '.items[0].instrumentId'
 etoro-cli trade open-units --instrument <instrument_id> --buy --leverage 1 --units 0.5
 ```
 
@@ -408,8 +408,8 @@ The CLI outputs JSON, making it easy to use with `jq` and in scripts:
 # Get Apple's current price
 etoro-cli market rates 1 | jq '.[0].Ask'
 
-# List instrument names from search
-etoro-cli market search crypto | jq '.Items[].InstrumentDisplayName'
+# List instrument IDs from search
+etoro-cli market search BTC | jq '.items[].instrumentId'
 
 # Get total P&L
 etoro-cli portfolio pnl | jq '.TotalPnL'
@@ -600,9 +600,9 @@ Once connected, you can ask your AI assistant things like:
 | Tool | Description | Parameters |
 |------|-------------|------------|
 | `get_identity` | Get authenticated user's account info | — |
-| `search_instruments` | Search instruments by name/symbol | `query`, `page`, `pageSize` |
+| `search_instruments` | Search instruments by symbol or name | `query`, `filterBy` (symbol/name), `page`, `pageSize` |
 | `get_instruments` | Get instrument metadata by ID | `instrumentIds` (comma-separated) |
-| `get_rates` | Get current prices or closing prices | `instrumentIds`, `type` (current/closing_price) |
+| `get_rates` | Get current prices or closing prices | `instrumentIds`, `type` (current/closing_price), `includeNames` (opt-in) |
 | `get_candles` | Get OHLC candle data | `instrumentId`, `interval`, `count`, `direction` |
 | `get_reference_data` | Get instrument types, exchanges, or industries | `type`, `ids` (optional filter) |
 | `open_order` | Open a market order | `order_type` (by_amount/by_units), `InstrumentID`, `IsBuy`, `Leverage`, `Amount`/`AmountInUnits` |
