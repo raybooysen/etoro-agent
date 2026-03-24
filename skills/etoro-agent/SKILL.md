@@ -258,9 +258,11 @@ etoro-cli market ref stocks-industries
 
 ### Portfolio
 
+**Recommended:** Use `portfolio pnl` as the primary command for checking overall portfolio status. It returns a flattened summary with TotalEquity, TotalPnL, UnrealizedPnL, and Cash. Use `portfolio positions` when you need individual position details (instrument, direction, amount, leverage) -- positions include instrument names and flattened P&L fields when available.
+
 ```bash
-etoro-cli portfolio positions                  # open positions
-etoro-cli portfolio pnl                        # P&L summary
+etoro-cli portfolio pnl                        # P&L summary (start here)
+etoro-cli portfolio positions                  # open positions with instrument names
 etoro-cli portfolio order <orderId>            # order execution status
 etoro-cli portfolio history \
   --min-date 2025-01-01 \                      # required, YYYY-MM-DD
@@ -296,6 +298,17 @@ etoro-cli trade limit \
 
 # Cancel a pending order
 etoro-cli trade cancel <orderId>
+```
+
+**Limitation: Modifying SL/TP on existing positions.** The eToro Public API does not support modifying stop-loss or take-profit on an open position. To change SL/TP, close the position and reopen it with the new SL/TP values:
+
+```bash
+# Close the existing position
+etoro-cli trade close <positionId>
+
+# Reopen with updated SL/TP
+etoro-cli trade open --instrument <id> --buy --leverage 1 --amount 100 \
+  --stop-loss <new-sl> --take-profit <new-tp>
 ```
 
 ### Social
@@ -334,7 +347,7 @@ etoro-cli watchlist remove-items <id> <ids>    # remove instruments
 ### Feeds
 
 ```bash
-etoro-cli feed instrument <marketId> [--take N] [--offset N]
+etoro-cli feed instrument <instrumentId> [--take N] [--offset N]
 etoro-cli feed user <userId> [--take N] [--offset N]
 etoro-cli feed post --message "text" --owner <userId>
 ```

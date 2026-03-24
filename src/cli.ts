@@ -5,7 +5,7 @@ import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles } from "./tools/market-data.js";
-import { flattenPnl } from "./tools/portfolio.js";
+import { flattenPnl, flattenPositions } from "./tools/portfolio.js";
 import { formatTable } from "./utils/table-formatter.js";
 
 // --- Arg parsing ---
@@ -146,7 +146,7 @@ Commands:
   watchlist add-items <id> <ids>     Add instruments (comma-separated IDs)
   watchlist remove-items <id> <ids>  Remove instruments (comma-separated IDs)
 
-  feed instrument <marketId>         Instrument social feed
+  feed instrument <instrumentId>     Instrument social feed
   feed user <userId>                 User social feed
     --take <n>                         Number of posts (default: 20)
     --offset <n>                       Pagination offset (default: 0)
@@ -209,24 +209,36 @@ async function main() {
             // Fall back to name search if symbol returned nothing
           }
 
-          // Client-side name filtering
-          const fetchSize = Math.min(searchPageSize * 5, 100);
-          const searchResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-            fields: searchFields,
-            pageNumber: searchPage,
-            pageSize: fetchSize,
-          });
-          const searchItems = (searchResult.items ?? searchResult.Items) as Array<Record<string, unknown>> | undefined;
-          if (!searchItems) return output(searchResult);
-
+          // Client-side name filtering: fetch up to 3 pages of 100 items
           const lowerQuery = searchQuery.toLowerCase();
-          const filtered = searchItems.filter((item) => {
-            const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
-            const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
-            const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
-            return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
-          });
-          return output({ ...searchResult, items: filtered.slice(0, searchPageSize), Items: undefined, totalItems: filtered.length, TotalItems: undefined });
+          const allFiltered: Array<Record<string, unknown>> = [];
+          const maxPages = 3;
+          let lastResult: Record<string, unknown> | undefined;
+
+          for (let p = 1; p <= maxPages; p++) {
+            const pageResult = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+              fields: searchFields,
+              pageNumber: p,
+              pageSize: 100,
+            });
+            lastResult = pageResult;
+
+            const pageItems = (pageResult.items ?? pageResult.Items) as Array<Record<string, unknown>> | undefined;
+            if (!pageItems || pageItems.length === 0) break;
+
+            const filtered = pageItems.filter((item) => {
+              const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
+              const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
+              const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
+              return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
+            });
+            allFiltered.push(...filtered);
+
+            if (allFiltered.length >= searchPageSize || pageItems.length < 100) break;
+          }
+
+          if (!lastResult) return output({ items: [], totalItems: 0 });
+          return output({ ...lastResult, items: allFiltered.slice(0, searchPageSize), Items: undefined, totalItems: allFiltered.length, TotalItems: undefined });
         }
         case "instrument":
           return output(await client.get(paths.marketData("instruments"), {
@@ -258,7 +270,7 @@ async function main() {
     case "portfolio":
       switch (sub) {
         case "positions":
-          return output(await client.get(paths.portfolio()));
+          return output(flattenPositions(await client.get(paths.portfolio())));
         case "pnl":
           return output(flattenPnl(await client.get(paths.pnl())));
         case "order":
@@ -394,7 +406,7 @@ async function main() {
     case "feed":
       switch (sub) {
         case "instrument":
-          return output(await client.get(paths.feeds(`instrument/${requireArg(rest, 0, "marketId")}`), {
+          return output(await client.get(paths.feeds(`instrument/${requireArg(rest, 0, "instrumentId")}`), {
             take: flagNum(f, "take") ?? 20,
             offset: flagNum(f, "offset") ?? 0,
           }));

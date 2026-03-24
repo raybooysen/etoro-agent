@@ -14,7 +14,7 @@ export function registerFeedTools(
     "Get social feed posts for an instrument or user",
     {
       type: z.enum(["instrument", "user"]).describe("Feed type"),
-      id: z.string().describe("Instrument market ID or user ID"),
+      id: z.string().describe("Instrument ID or user ID (same as instrumentID from search results)"),
       take: z.number().int().min(1).max(100).default(20).describe("Number of posts to return"),
       offset: z.number().int().min(0).default(0).describe("Offset for pagination"),
     },

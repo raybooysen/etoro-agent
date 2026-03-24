@@ -143,30 +143,42 @@ export function registerMarketDataTools(
           // Fall back to name search if symbol returned nothing
         }
 
-        // Client-side name filtering: fetch a larger page and filter locally
-        const fetchSize = Math.min(pageSize * 5, 100);
-        const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
-          fields: searchFields,
-          pageNumber: page,
-          pageSize: fetchSize,
-        });
-
-        const items = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
-        if (!items) return jsonContent(result);
-
+        // Client-side name filtering: fetch up to 3 pages of 100 items and filter locally
         const lowerQuery = query.toLowerCase();
-        const filtered = items.filter((item) => {
-          const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
-          const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
-          const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
-          return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
-        });
+        const allFiltered: Array<Record<string, unknown>> = [];
+        const maxPages = 3;
+        let lastResult: Record<string, unknown> | undefined;
+
+        for (let p = 1; p <= maxPages; p++) {
+          const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+            fields: searchFields,
+            pageNumber: p,
+            pageSize: 100,
+          });
+          lastResult = result;
+
+          const items = (result.items ?? result.Items) as Array<Record<string, unknown>> | undefined;
+          if (!items || items.length === 0) break;
+
+          const filtered = items.filter((item) => {
+            const displayName = String(item.InstrumentDisplayName ?? "").toLowerCase();
+            const symbolFull = String(item.SymbolFull ?? "").toLowerCase();
+            const internalSymbol = String(item.InternalSymbolFull ?? "").toLowerCase();
+            return displayName.includes(lowerQuery) || symbolFull.includes(lowerQuery) || internalSymbol.includes(lowerQuery);
+          });
+          allFiltered.push(...filtered);
+
+          // Stop early if we have enough results or the page was not full
+          if (allFiltered.length >= pageSize || items.length < 100) break;
+        }
+
+        if (!lastResult) return jsonContent({ items: [], totalItems: 0 });
 
         return jsonContent({
-          ...result,
-          items: filtered.slice(0, pageSize),
+          ...lastResult,
+          items: allFiltered.slice(0, pageSize),
           Items: undefined,
-          totalItems: filtered.length,
+          totalItems: allFiltered.length,
           TotalItems: undefined,
         });
       } catch (error) {
