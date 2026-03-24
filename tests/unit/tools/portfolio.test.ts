@@ -11,7 +11,8 @@ describe("flattenPnl", () => {
       },
     };
     const result = flattenPnl(nested) as Record<string, unknown>;
-    expect(result.TotalEquity).toBe(10000);
+    // TotalEquity = credit + unrealizedPnL = 10000 + 500
+    expect(result.TotalEquity).toBe(10500);
     expect(result.TotalPnL).toBe(500);
     expect(result.UnrealizedPnL).toBe(500);
     expect(result.Cash).toBe(10000);
@@ -27,9 +28,24 @@ describe("flattenPnl", () => {
       },
     };
     const result = flattenPnl(nested) as Record<string, unknown>;
-    expect(result.TotalEquity).toBe(8000);
+    // TotalEquity = Credit + UnrealizedPnL = 8000 + (-200)
+    expect(result.TotalEquity).toBe(7800);
     expect(result.TotalPnL).toBe(-200);
     expect(result.Cash).toBe(8000);
+  });
+
+  it("should compute TotalEquity correctly with negative unrealizedPnL (bug regression)", () => {
+    const nested = {
+      clientPortfolio: {
+        credit: 71103.83,
+        unrealizedPnL: -769.85,
+      },
+    };
+    const result = flattenPnl(nested) as Record<string, unknown>;
+    // The reported bug: TotalEquity was set to credit (71103.83) instead of credit + unrealizedPnL
+    expect(result.TotalEquity).toBeCloseTo(70333.98, 2);
+    expect(result.Cash).toBe(71103.83);
+    expect(result.UnrealizedPnL).toBe(-769.85);
   });
 
   it("should return raw result when no clientPortfolio key exists", () => {
