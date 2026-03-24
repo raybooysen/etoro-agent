@@ -79,7 +79,7 @@ export class EtoroClient {
         const response = await this.fetchFn(url.toString(), {
           method,
           headers: this.buildHeaders(),
-          body: options?.body ? JSON.stringify(options.body) : undefined,
+          body: method !== "GET" ? JSON.stringify(options?.body ?? {}) : undefined,
           signal: controller.signal,
         });
 
