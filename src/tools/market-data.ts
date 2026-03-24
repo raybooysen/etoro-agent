@@ -306,4 +306,51 @@ export function registerMarketDataTools(
       }
     },
   );
+
+  server.tool(
+    "get_market_status",
+    "Check if instruments are currently tradeable and whether their markets are open. Returns tradability status for one or more instruments.",
+    {
+      symbols: z.string().describe("Comma-separated ticker symbols (e.g. 'AAPL,BTC,TSLA')"),
+    },
+    async ({ symbols }) => {
+      try {
+        const symbolList = symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+        const statuses: Array<Record<string, unknown>> = [];
+
+        for (const symbol of symbolList) {
+          const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+            InternalSymbolFull: symbol,
+            pageSize: 1,
+            pageNumber: 1,
+          });
+
+          const items = result.items as Array<Record<string, unknown>> | undefined;
+          if (!items || items.length === 0) {
+            statuses.push({ symbol, found: false });
+            continue;
+          }
+
+          const item = items[0];
+          statuses.push({
+            symbol,
+            found: true,
+            instrumentId: item.internalInstrumentId ?? item.instrumentId,
+            displayName: item.internalInstrumentDisplayName ?? item.instrumentDisplayName,
+            isCurrentlyTradable: item.isCurrentlyTradable ?? null,
+            isExchangeOpen: item.isExchangeOpen ?? null,
+            isBuyEnabled: item.isBuyEnabled ?? null,
+            isActiveInPlatform: item.isActiveInPlatform ?? null,
+            exchangeName: item.internalExchangeName ?? null,
+            assetClass: item.internalAssetClassName ?? null,
+          });
+        }
+
+        return jsonContent(statuses);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return errorContent(`Failed to get market status: ${message}`);
+      }
+    },
+  );
 }

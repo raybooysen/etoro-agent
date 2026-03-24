@@ -254,6 +254,9 @@ etoro-cli market candles <instrumentId> \
 etoro-cli market ref instrument-types
 etoro-cli market ref exchanges
 etoro-cli market ref stocks-industries
+
+# Check if instruments are currently tradeable
+etoro-cli market status AAPL,BTC,TSLA
 ```
 
 ### Portfolio
@@ -377,6 +380,7 @@ etoro-cli discovery recommendations [--count N] # personalized picks (default: 1
 | `get_rates` | Live prices or closing prices | `instrumentIds`, `type` (current/closing_price), `includeNames` (opt-in) |
 | `get_candles` | OHLC history | `instrumentId`, `interval`, `count`, `direction` |
 | `get_reference_data` | Cached reference data | `type` (instrument_types/exchanges/stocks_industries) |
+| `get_market_status` | Check if instruments are tradeable | `symbols` (comma-separated, e.g. "AAPL,BTC") |
 | `get_portfolio` | Positions, P&L, order status | `view` (positions/pnl/order), `orderId` |
 | `get_trade_history` | Closed trades | `minDate` (YYYY-MM-DD), `page`, `pageSize` |
 | `search_people` | Find traders | `action` (search/lookup), `period`, `isPopularInvestor` |

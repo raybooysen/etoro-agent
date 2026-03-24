@@ -389,3 +389,69 @@ describe("flattenCandles", () => {
     expect(candle).not.toHaveProperty("volume");
   });
 });
+
+describe("get_market_status (via mock client)", () => {
+  it("fetches tradability status for a single symbol", async () => {
+    const paths = createPathResolver("demo");
+    const searchResponse = {
+      items: [{
+        internalInstrumentId: 1001,
+        internalInstrumentDisplayName: "Apple",
+        internalSymbolFull: "AAPL",
+        isCurrentlyTradable: true,
+        isExchangeOpen: true,
+        isBuyEnabled: true,
+        isActiveInPlatform: true,
+        internalExchangeName: "Nasdaq",
+        internalAssetClassName: "Stocks",
+      }],
+      totalItems: 1,
+    };
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(searchResponse), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }),
+    );
+    const client = new EtoroClient(
+      { apiKey: "test", userKey: "test", environment: "demo" },
+      { rateLimiter: { acquire: vi.fn() } as unknown as import("../../../src/utils/rate-limiter.js").RateLimiter, fetchFn: mockFetch as typeof fetch },
+    );
+
+    const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+      InternalSymbolFull: "AAPL",
+      pageSize: 1,
+      pageNumber: 1,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("InternalSymbolFull")).toBe("AAPL");
+    expect(parsed.searchParams.get("pageSize")).toBe("1");
+
+    const items = result.items as Array<Record<string, unknown>>;
+    expect(items[0].isCurrentlyTradable).toBe(true);
+    expect(items[0].isExchangeOpen).toBe(true);
+    expect(items[0].isBuyEnabled).toBe(true);
+    expect(items[0].internalExchangeName).toBe("Nasdaq");
+    expect(items[0].internalAssetClassName).toBe("Stocks");
+  });
+
+  it("returns found:false for unknown symbols", async () => {
+    const paths = createPathResolver("demo");
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], totalItems: 0 }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }),
+    );
+    const client = new EtoroClient(
+      { apiKey: "test", userKey: "test", environment: "demo" },
+      { rateLimiter: { acquire: vi.fn() } as unknown as import("../../../src/utils/rate-limiter.js").RateLimiter, fetchFn: mockFetch as typeof fetch },
+    );
+
+    const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+      InternalSymbolFull: "XYZNOTREAL",
+      pageSize: 1,
+      pageNumber: 1,
+    });
+
+    const items = result.items as Array<unknown>;
+    expect(items).toHaveLength(0);
+  });
+});
