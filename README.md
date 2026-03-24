@@ -265,6 +265,19 @@ etoro-cli trade limit --instrument 1 --buy --leverage 1 --amount 100 --rate 150.
   --stop-loss 140.00 --take-profit 180.00
 ```
 
+#### Modify stop loss / take profit
+
+> **Limitation:** The eToro Public API does not support modifying SL/TP on open positions. The only way to change SL/TP is to close and reopen the position:
+
+```bash
+# Close the existing position
+etoro-cli trade close 12345678
+
+# Reopen with new SL/TP
+etoro-cli trade open --instrument <id> --buy --leverage 1 --amount 100 \
+  --stop-loss <new_sl> --take-profit <new_tp>
+```
+
 #### Cancel an order
 
 Cancel a pending open order or limit order.
