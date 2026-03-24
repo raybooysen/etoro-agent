@@ -15,8 +15,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] **CLAUDE.md** — architecture section if new files/patterns added
 - [ ] **Build** — `npm run build` passes
 - [ ] **Tests** — `npm test` and `npx vitest run tests/integration/` both pass
+- [ ] **PR** — all changes go through a pull request. Never commit directly to main.
 
 Partial changes (e.g. fixing the MCP tool but not the CLI, or updating code but not docs) are not acceptable. Both interfaces share the same codebase and must stay in sync.
+
+## Git Workflow
+
+- **Never commit directly to main.** All changes must go through a pull request.
+- Create a feature/fix branch from main (e.g. `fix/search-filtering`, `feat/flatten-positions`).
+- Each PR must reference a GitHub issue using `Closes #N` in the PR body so issues auto-close on merge.
+- If no issue exists for the work, create one first.
+- Rebase on main if the PR has merge conflicts before requesting review.
 
 ## Project Overview
 
