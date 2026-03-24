@@ -148,6 +148,8 @@ Commands:
   watchlist delete <id>              Delete a watchlist
   watchlist add-items <id> <ids>     Add instruments (comma-separated IDs)
   watchlist remove-items <id> <ids>  Remove instruments (comma-separated IDs)
+  watchlist rename <id> <name>       Rename a watchlist
+  watchlist rank <id> <rank>         Reorder a watchlist (set position)
 
   feed instrument <instrumentId>     Instrument social feed
   feed user <userId>                 User social feed
@@ -403,8 +405,18 @@ async function main() {
           const ids = requireArg(rest, 1, "instrumentIds").split(",").map(Number);
           return output(await client.delete(paths.watchlists(`${wlId}/items`), ids));
         }
+        case "rename": {
+          const wlId = requireArg(rest, 0, "watchlistId");
+          const newName = requireArg(rest, 1, "name");
+          return output(await client.put(paths.watchlists(`${wlId}/rename`), { name: newName }));
+        }
+        case "rank": {
+          const wlId = requireArg(rest, 0, "watchlistId");
+          const newRank = Number(requireArg(rest, 1, "rank"));
+          return output(await client.put(paths.watchlists(`${wlId}/rank`), { rank: newRank }));
+        }
         default:
-          error(`Unknown watchlist subcommand: ${sub}. Try: list, get, create, delete, add-items, remove-items`);
+          error(`Unknown watchlist subcommand: ${sub}. Try: list, get, create, delete, add-items, remove-items, rename, rank`);
       }
       break;
 

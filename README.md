@@ -416,7 +416,7 @@ etoro-cli portfolio pnl | jq '.TotalPnL'
 
 # Find Popular Investors with >20% yearly gain (using jq filtering)
 etoro-cli social search --period CurrYear --popular-investor --page-size 50 | \
-  jq '.Items[] | select(.Gain > 20) | {UserName, Gain, RiskScore}'
+  jq '.items[] | select(.gain > 20) | {userName, gain, riskScore}'
 ```
 
 ---
