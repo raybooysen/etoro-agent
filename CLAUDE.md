@@ -67,7 +67,7 @@ src/
   config.ts             # Loads config from env vars + CLI args (CLI wins), validates with Zod
   tools/
     identity.ts         # get_identity
-    market-data.ts      # search_instruments, get_instruments, get_rates, get_candles, get_reference_data
+    market-data.ts      # search_instruments, get_instruments, get_rates, get_candles, get_reference_data, get_market_status
                         #   + enrichWithNames() — cross-references instrument metadata into responses
                         #   + flattenCandles() — unwraps nested candle response, defaults null volume to 0
     trading.ts          # open_order, close_position, manage_order

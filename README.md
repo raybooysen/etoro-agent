@@ -181,6 +181,16 @@ etoro-cli market ref exchanges
 etoro-cli market ref stocks-industries
 ```
 
+#### Check market status
+
+Check if instruments are currently tradeable and whether their exchanges are open.
+
+```bash
+etoro-cli market status AAPL,BTC,TSLA
+```
+
+Returns `isCurrentlyTradable`, `isExchangeOpen`, `isBuyEnabled`, exchange name, and asset class for each symbol. Use this before placing orders to verify the market is open.
+
 ### Portfolio
 
 #### View positions
@@ -605,6 +615,7 @@ Once connected, you can ask your AI assistant things like:
 | `get_rates` | Get current prices or closing prices | `instrumentIds`, `type` (current/closing_price), `includeNames` (opt-in) |
 | `get_candles` | Get OHLC candle data | `instrumentId`, `interval`, `count`, `direction` |
 | `get_reference_data` | Get instrument types, exchanges, or industries | `type`, `ids` (optional filter) |
+| `get_market_status` | Check if instruments are currently tradeable | `symbols` (comma-separated, e.g. "AAPL,BTC") |
 | `open_order` | Open a market order | `order_type` (by_amount/by_units), `InstrumentID`, `IsBuy`, `Leverage`, `Amount`/`AmountInUnits` |
 | `close_position` | Close an open position | `positionId`, `UnitsToDeduct` (optional partial close) |
 | `manage_order` | Cancel or place limit orders | `action` (cancel_open_order/cancel_close_order/place_limit_order/cancel_limit_order), `orderId`, order params |

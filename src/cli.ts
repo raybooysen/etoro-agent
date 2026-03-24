@@ -107,6 +107,7 @@ Commands:
     --count <n>                        Number of candles, max 1000 (default: 100)
     --direction <dir>                  asc or desc (default: desc)
   market ref <type>                  Reference data: instrument-types|exchanges|stocks-industries
+  market status <symbols>            Check if instruments are tradeable (comma-separated symbols)
 
   portfolio positions                Current portfolio positions
   portfolio pnl                      Portfolio P&L summary
@@ -241,8 +242,37 @@ async function main() {
           return output(await client.get(paths.marketData(
             requireArg(rest, 0, "type").replace("_", "-"),
           )));
+        case "status": {
+          const symbols = requireArg(rest, 0, "symbols").split(",").map((s: string) => s.trim().toUpperCase()).filter(Boolean);
+          const statuses: Array<Record<string, unknown>> = [];
+          for (const symbol of symbols) {
+            const result = await client.get<Record<string, unknown>>(paths.marketData("search"), {
+              InternalSymbolFull: symbol,
+              pageSize: 1,
+              pageNumber: 1,
+            });
+            const items = result.items as Array<Record<string, unknown>> | undefined;
+            if (!items || items.length === 0) {
+              statuses.push({ symbol, found: false });
+              continue;
+            }
+            const item = items[0];
+            statuses.push({
+              symbol,
+              found: true,
+              instrumentId: item.internalInstrumentId ?? item.instrumentId,
+              displayName: item.internalInstrumentDisplayName ?? item.instrumentDisplayName,
+              isCurrentlyTradable: item.isCurrentlyTradable ?? null,
+              isExchangeOpen: item.isExchangeOpen ?? null,
+              isBuyEnabled: item.isBuyEnabled ?? null,
+              exchangeName: item.internalExchangeName ?? null,
+              assetClass: item.internalAssetClassName ?? null,
+            });
+          }
+          return output(statuses);
+        }
         default:
-          error(`Unknown market subcommand: ${sub}. Try: search, instrument, rates, candles, ref`);
+          error(`Unknown market subcommand: ${sub}. Try: search, instrument, rates, candles, ref, status`);
       }
       break;
 
