@@ -196,6 +196,36 @@ describe("EtoroClient", () => {
       expect(init.method).toBe("PATCH");
       expect(init.body).toBe(JSON.stringify(body));
     });
+
+    it("POST sends empty JSON body when no body provided (prevents 415)", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ closed: true }));
+
+      await client.post("/api/v1/trading/execution/demo/market-close-orders/positions/123");
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(init.method).toBe("POST");
+      expect(init.body).toBe(JSON.stringify({}));
+    });
+
+    it("DELETE sends empty JSON body when no body provided", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+      await client.delete("/api/v1/items/1");
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(init.method).toBe("DELETE");
+      expect(init.body).toBe(JSON.stringify({}));
+    });
+
+    it("GET never sends a body", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+      await client.get("/api/v1/test");
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(init.method).toBe("GET");
+      expect(init.body).toBeUndefined();
+    });
   });
 
   describe("response parsing", () => {
