@@ -31,6 +31,58 @@ export function flattenCandles(result: unknown): unknown[] {
 const referenceCache = new TtlCache<unknown>();
 const REFERENCE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const INSTRUMENT_TTL = 60 * 60 * 1000; // 1 hour
+const FANOUT_DELAY = 100; // ms between individual instrument fetches
+
+/**
+ * Fetch instrument metadata for multiple IDs. The eToro API only supports
+ * single-ID lookups, so this fans out into individual requests with a small
+ * delay between each to stay within rate limits. Results are merged and
+ * returned in the standard { instrumentDisplayDatas: [...] } shape.
+ * Per-ID results are cached individually for 1 hour.
+ */
+export async function fetchInstrumentsBatch(
+  client: EtoroClient,
+  paths: PathResolver,
+  instrumentIds: string,
+  cache: TtlCache<unknown>,
+): Promise<Record<string, unknown>> {
+  const ids = instrumentIds.split(",").map((s) => s.trim()).filter(Boolean);
+  if (ids.length === 0) return { instrumentDisplayDatas: [] };
+
+  // Single ID — direct call
+  if (ids.length === 1) {
+    const cacheKey = `instrument:${ids[0]}`;
+    const cached = cache.get(cacheKey) as Record<string, unknown> | undefined;
+    if (cached) return cached;
+
+    const result = await client.get<Record<string, unknown>>(paths.marketData("instruments"), {
+      instrumentIds: ids[0],
+    });
+    cache.set(cacheKey, result, INSTRUMENT_TTL);
+    return result;
+  }
+
+  // Multiple IDs — fan out with delay, check cache per ID
+  const allDisplayDatas: unknown[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const cacheKey = `instrument:${id}`;
+    let result = cache.get(cacheKey) as Record<string, unknown> | undefined;
+
+    if (!result) {
+      if (i > 0) await new Promise((r) => setTimeout(r, FANOUT_DELAY));
+      result = await client.get<Record<string, unknown>>(paths.marketData("instruments"), {
+        instrumentIds: id,
+      });
+      cache.set(cacheKey, result, INSTRUMENT_TTL);
+    }
+
+    const items = result.instrumentDisplayDatas as unknown[] | undefined;
+    if (items) allDisplayDatas.push(...items);
+  }
+
+  return { instrumentDisplayDatas: allDisplayDatas };
+}
 
 export async function enrichWithNames(
   client: EtoroClient,
@@ -52,26 +104,9 @@ export async function enrichWithNames(
 
   const ids = instrumentIds.split(",").map((s) => s.trim()).filter(Boolean);
   if (ids.length === 0) return rateData;
-  const sortedIds = ids.sort((a, b) => Number(a) - Number(b)).join(",");
-  const cacheKey = `instruments:${sortedIds}`;
-  let instruments: unknown = cache.get(cacheKey);
 
-  if (!instruments) {
-    instruments = await client.get(paths.marketData("instruments"), {
-      instrumentIds: sortedIds,
-    });
-    cache.set(cacheKey, instruments, INSTRUMENT_TTL);
-  }
-
-  // API returns { instrumentDisplayDatas: [...] } — unwrap if needed
-  let instrumentList: unknown[];
-  if (Array.isArray(instruments)) {
-    instrumentList = instruments;
-  } else if (typeof instruments === "object" && instruments !== null && "instrumentDisplayDatas" in instruments) {
-    instrumentList = (instruments as Record<string, unknown>).instrumentDisplayDatas as unknown[];
-  } else {
-    instrumentList = [];
-  }
+  const instruments = await fetchInstrumentsBatch(client, paths, ids.join(","), cache);
+  const instrumentList = (instruments.instrumentDisplayDatas as unknown[]) ?? [];
 
   const lookup = new Map<number, { instrumentDisplayName: string; symbolFull: string }>();
   for (const inst of instrumentList) {
@@ -161,16 +196,8 @@ export function registerMarketDataTools(
       instrumentIds: z.string().describe("Comma-separated instrument IDs (e.g. '1,2,3')"),
     },
     async ({ instrumentIds }) => {
-      const sortedIds = instrumentIds.split(",").map((s) => s.trim()).sort((a, b) => Number(a) - Number(b)).join(",");
-      const cacheKey = `instruments:${sortedIds}`;
-      const cached = referenceCache.get(cacheKey);
-      if (cached) return jsonContent(cached);
-
       try {
-        const result = await client.get(paths.marketData("instruments"), {
-          instrumentIds,
-        });
-        referenceCache.set(cacheKey, result, INSTRUMENT_TTL);
+        const result = await fetchInstrumentsBatch(client, paths, instrumentIds, referenceCache);
         return jsonContent(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

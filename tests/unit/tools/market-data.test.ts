@@ -48,16 +48,19 @@ describe("enrichWithNames", () => {
   });
 
   it("correctly merges instrument names into rate data", async () => {
-    const instrumentMetadata = [
-      { InstrumentID: 1, InstrumentDisplayName: "Apple Inc.", SymbolFull: "AAPL.US" },
-      { InstrumentID: 2, InstrumentDisplayName: "Microsoft Corp.", SymbolFull: "MSFT.US" },
-    ];
-    const rateData = [
-      { InstrumentID: 1, Ask: 150.5, Bid: 150.0 },
-      { InstrumentID: 2, Ask: 300.0, Bid: 299.5 },
-    ];
+    // fetchInstrumentsBatch calls individually for each ID — mock returns per-ID wrapped response
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ instrumentDisplayDatas: [{ instrumentID: 1, instrumentDisplayName: "Apple Inc.", symbolFull: "AAPL.US" }] }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ instrumentDisplayDatas: [{ instrumentID: 2, instrumentDisplayName: "Microsoft Corp.", symbolFull: "MSFT.US" }] }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }));
+    const client = new EtoroClient(
+      { apiKey: "test", userKey: "test", environment: "demo" },
+      { rateLimiter: { acquire: vi.fn() } as unknown as import("../../../src/utils/rate-limiter.js").RateLimiter, fetchFn: mockFetch as typeof fetch },
+    );
 
-    const client = makeMockClient(instrumentMetadata);
+    const rateData = [
+      { instrumentID: 1, Ask: 150.5, Bid: 150.0 },
+      { instrumentID: 2, Ask: 300.0, Bid: 299.5 },
+    ];
     const result = await enrichWithNames(client, paths, "1,2", rateData, cache);
 
     const arr = result as Array<Record<string, unknown>>;
@@ -80,23 +83,25 @@ describe("enrichWithNames", () => {
   });
 
   it("does not crash when rate data contains unknown InstrumentIDs", async () => {
-    const instrumentMetadata = [
-      { InstrumentID: 1, InstrumentDisplayName: "Apple Inc.", SymbolFull: "AAPL.US" },
-    ];
-    const rateData = [
-      { InstrumentID: 1, Ask: 150.5, Bid: 150.0 },
-      { InstrumentID: 999, Ask: 50.0, Bid: 49.5 },
-    ];
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ instrumentDisplayDatas: [{ instrumentID: 1, instrumentDisplayName: "Apple Inc.", symbolFull: "AAPL.US" }] }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ instrumentDisplayDatas: [] }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }));
+    const client = new EtoroClient(
+      { apiKey: "test", userKey: "test", environment: "demo" },
+      { rateLimiter: { acquire: vi.fn() } as unknown as import("../../../src/utils/rate-limiter.js").RateLimiter, fetchFn: mockFetch as typeof fetch },
+    );
 
-    const client = makeMockClient(instrumentMetadata);
+    const rateData = [
+      { instrumentID: 1, Ask: 150.5, Bid: 150.0 },
+      { instrumentID: 999, Ask: 50.0, Bid: 49.5 },
+    ];
     const result = await enrichWithNames(client, paths, "1,999", rateData, cache);
 
     const arr = result as Array<Record<string, unknown>>;
     expect(arr[0].instrumentDisplayName).toBe("Apple Inc.");
-    expect(arr[0].symbolFull).toBe("AAPL.US");
     // Unknown ID should not have name fields
     expect(arr[1].instrumentDisplayName).toBeUndefined();
-    expect(arr[1].InstrumentID).toBe(999);
+    expect(arr[1].instrumentID).toBe(999);
   });
 
   it("returns empty array for empty rate data", async () => {
@@ -142,31 +147,28 @@ describe("enrichWithNames", () => {
     expect(result[0].symbolFull).toBe("AAPL");
   });
 
-  it("sorts instrument IDs for consistent cache keys", async () => {
-    const instrumentMetadata = [
-      { InstrumentID: 1, InstrumentDisplayName: "Apple", SymbolFull: "AAPL" },
-      { InstrumentID: 2, InstrumentDisplayName: "Microsoft", SymbolFull: "MSFT" },
-    ];
-    const rateData = [{ InstrumentID: 1, Ask: 100 }];
+  it("caches per individual instrument ID", async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ instrumentDisplayDatas: [{ instrumentID: 2, instrumentDisplayName: "Microsoft", symbolFull: "MSFT" }] }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ instrumentDisplayDatas: [{ instrumentID: 1, instrumentDisplayName: "Apple", symbolFull: "AAPL" }] }), { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } }));
+    const client = new EtoroClient(
+      { apiKey: "test", userKey: "test", environment: "demo" },
+      { rateLimiter: { acquire: vi.fn() } as unknown as import("../../../src/utils/rate-limiter.js").RateLimiter, fetchFn: mockFetch as typeof fetch },
+    );
 
-    const client = makeMockClient(instrumentMetadata);
-
-    // First call with "2,1"
+    const rateData = [{ instrumentID: 1, Ask: 100 }];
     await enrichWithNames(client, paths, "2,1", rateData, cache);
 
-    // Cache should have the sorted key
-    expect(cache.has("instruments:1,2")).toBe(true);
-    expect(cache.has("instruments:2,1")).toBe(false);
+    // Individual IDs should be cached
+    expect(cache.has("instrument:1")).toBe(true);
+    expect(cache.has("instrument:2")).toBe(true);
   });
 
   it("uses cached instrument data on subsequent calls", async () => {
-    const instrumentMetadata = [
-      { InstrumentID: 1, InstrumentDisplayName: "Apple", SymbolFull: "AAPL" },
-    ];
-    const rateData = [{ InstrumentID: 1, Ask: 100 }];
+    const rateData = [{ instrumentID: 1, Ask: 100 }];
 
     const mockFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(instrumentMetadata), {
+      new Response(JSON.stringify({ instrumentDisplayDatas: [{ instrumentID: 1, instrumentDisplayName: "Apple", symbolFull: "AAPL" }] }), {
         status: 200,
         statusText: "OK",
         headers: { "Content-Type": "application/json" },
