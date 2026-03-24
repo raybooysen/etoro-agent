@@ -2,7 +2,47 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { EtoroClient } from "../client.js";
 import type { PathResolver } from "../utils/path-resolver.js";
+import { TtlCache } from "../utils/cache.js";
+import { enrichWithNames } from "./market-data.js";
 import { jsonContent, errorContent } from "../utils/formatters.js";
+
+const instrumentCache = new TtlCache<unknown>();
+
+/** Extract positions from raw API response and flatten nested unrealizedPnL fields. */
+export function flattenPositions(result: unknown): unknown[] {
+  if (typeof result !== "object" || result === null) return [];
+
+  const obj = result as Record<string, unknown>;
+  const portfolio = (obj.clientPortfolio ?? obj.ClientPortfolio) as Record<string, unknown> | undefined;
+  const positions = (portfolio?.positions ?? portfolio?.Positions ?? obj.positions ?? obj.Positions) as unknown[] | undefined;
+  if (!Array.isArray(positions)) return [];
+
+  return positions.map((pos: unknown) => {
+    if (typeof pos !== "object" || pos === null) return pos;
+    const record = pos as Record<string, unknown>;
+    const pnlObj = (record.unrealizedPnL ?? record.UnrealizedPnL) as Record<string, unknown> | undefined;
+
+    if (typeof pnlObj !== "object" || pnlObj === null) return record;
+
+    const closeRate = pnlObj.closeRate ?? pnlObj.CloseRate;
+    const pnl = pnlObj.pnL ?? pnlObj.PnL ?? pnlObj.pnl;
+    const amount = Number(record.amount ?? record.Amount ?? 0);
+    const pnlNum = Number(pnl ?? 0);
+
+    const flattened: Record<string, unknown> = { ...record };
+    // Remove the nested object
+    delete flattened.unrealizedPnL;
+    delete flattened.UnrealizedPnL;
+
+    if (closeRate !== undefined) flattened.currentRate = closeRate;
+    if (pnl !== undefined) flattened.pnL = pnlNum;
+    if (pnl !== undefined && amount !== 0) {
+      flattened.pnLPercent = Math.round((pnlNum / amount) * 100 * 100) / 100;
+    }
+
+    return flattened;
+  });
+}
 
 /** Flatten nested P&L response into a simple summary object. */
 export function flattenPnl(result: unknown): unknown {
@@ -55,6 +95,27 @@ export function registerPortfolioTools(
         const result = await client.get(path);
         if (view === "pnl") {
           return jsonContent(flattenPnl(result));
+        }
+        if (view === "positions") {
+          let positions = flattenPositions(result);
+          // Enrich with instrument names
+          const ids = positions
+            .map((p) => {
+              if (typeof p !== "object" || p === null) return undefined;
+              const rec = p as Record<string, unknown>;
+              return rec.instrumentID ?? rec.InstrumentID;
+            })
+            .filter((id) => id !== undefined)
+            .map(String);
+          if (ids.length > 0) {
+            try {
+              const uniqueIds = [...new Set(ids)].join(",");
+              positions = (await enrichWithNames(client, paths, uniqueIds, positions, instrumentCache)) as unknown[];
+            } catch {
+              // Enrichment is best-effort; return positions without names
+            }
+          }
+          return jsonContent(positions);
         }
         return jsonContent(result);
       } catch (error) {
