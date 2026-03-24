@@ -130,7 +130,8 @@ Commands:
     --leverage <n>                     Leverage (required)
     --amount <n>                       Cash amount (required)
     --rate <n>                         Limit price (required)
-  trade cancel <orderId>             Cancel an open or limit order
+  trade cancel <orderId>             Cancel an open or limit order (auto-detects type)
+    --type <type>                      limit or market (optional, auto-detects if omitted)
 
   social search                      Search/discover traders
     --period <period>                  Required: CurrMonth|CurrYear|LastYear|etc.
@@ -346,10 +347,27 @@ async function main() {
           if (flag(f, "take-profit")) body.TakeProfitRate = Number(flag(f, "take-profit"));
           return output(await client.post(paths.trading("limit-orders"), body));
         }
-        case "cancel":
-          return output(await client.delete(
-            paths.trading(`market-open-orders/${requireArg(rest, 0, "orderId")}`),
-          ));
+        case "cancel": {
+          const cancelOrderId = requireArg(rest, 0, "orderId");
+          const cancelType = flag(f, "type");
+          if (cancelType === "market") {
+            return output(await client.delete(paths.trading(`market-open-orders/${cancelOrderId}`)));
+          }
+          if (cancelType === "limit") {
+            return output(await client.delete(paths.trading(`limit-orders/${cancelOrderId}`)));
+          }
+          // Auto-detect: try limit-orders first (most common cancel case), fall back to market-open-orders
+          try {
+            return output(await client.delete(paths.trading(`limit-orders/${cancelOrderId}`)));
+          } catch (limitErr) {
+            try {
+              return output(await client.delete(paths.trading(`market-open-orders/${cancelOrderId}`)));
+            } catch {
+              // Re-throw the original limit error if both fail
+              throw limitErr;
+            }
+          }
+        }
         default:
           error(`Unknown trade subcommand: ${sub}. Try: open, open-units, close, limit, cancel`);
       }
