@@ -296,8 +296,10 @@ etoro-cli trade limit \
   --leverage <n> --amount <n> --rate <price> \
   [--stop-loss <rate>] [--take-profit <rate>]
 
-# Cancel a pending order
+# Cancel a pending order (auto-detects limit vs market order)
 etoro-cli trade cancel <orderId>
+etoro-cli trade cancel <orderId> --type limit    # force limit order cancel
+etoro-cli trade cancel <orderId> --type market   # force market order cancel
 ```
 
 **Limitation: Modifying SL/TP on existing positions.** The eToro Public API does not support modifying stop-loss or take-profit on an open position. To change SL/TP, close the position and reopen it with the new SL/TP values:
