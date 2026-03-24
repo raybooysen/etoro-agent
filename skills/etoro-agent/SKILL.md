@@ -235,8 +235,8 @@ etoro-cli market search <symbol> [--page N] [--page-size N]
 # Search instruments by name (client-side substring match)
 etoro-cli market search <name> --filter-by name [--page N] [--page-size N]
 
-# Get instrument metadata (one ID at a time — comma-separated IDs may return HTTP 500)
-etoro-cli market instrument <id>
+# Get instrument metadata (comma-separated IDs supported — auto-fans out into individual requests)
+etoro-cli market instrument <ids>              # e.g. 1137,1001,1003
 
 # Get current market prices
 etoro-cli market rates <ids>                   # comma-separated, max 100

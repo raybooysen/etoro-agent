@@ -132,14 +132,14 @@ etoro-cli market search TSLA --page 1 --page-size 5
 
 #### Get instrument metadata
 
-Retrieve detailed metadata for instruments by their IDs.
+Retrieve detailed metadata for instruments by their IDs. Multiple IDs are automatically fetched individually and merged (the eToro API only supports one ID per request).
 
 ```bash
 # Single instrument
-etoro-cli market instrument 1
+etoro-cli market instrument 1137
 
-# Multiple instruments (comma-separated, look up IDs with: etoro-cli market search <name>)
-etoro-cli market instrument <id1>,<id2>,<id3>
+# Multiple instruments (auto-fans out into individual requests with rate limiting)
+etoro-cli market instrument 1137,1001,1003
 ```
 
 #### Get live rates

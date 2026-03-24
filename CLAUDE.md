@@ -177,6 +177,7 @@ eToro API keys are environment-specific (you choose Demo or Real when generating
 - **No position SL/TP modification.** The eToro Public API does not support modifying stop loss or take profit on existing positions. The endpoint exists in eToro's internal session API (`PUT /sapi/trade-{mode}/positions/{id}`) but is not exposed in the public API. The only workaround is close + reopen.
 - **No free-text search.** The `searchText` parameter is ignored. Use `InternalSymbolFull` for server-side symbol filtering, or fetch + filter client-side for name search.
 - **Instrument IDs are not stable.** Do not hardcode instrument IDs — always use `search_instruments` to discover IDs at runtime.
+- **No batch instrument lookup.** The `/market-data/instruments` endpoint only supports one instrument ID per request. `fetchInstrumentsBatch()` transparently fans out multiple IDs into individual requests with 100ms delay between each, merging the results. This is rate-limit aware via the existing sliding-window tracker.
 
 ## Documentation files
 

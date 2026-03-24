@@ -4,7 +4,8 @@ import { EtoroClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
-import { flattenCandles } from "./tools/market-data.js";
+import { flattenCandles, fetchInstrumentsBatch } from "./tools/market-data.js";
+import { TtlCache } from "./utils/cache.js";
 import { flattenPnl, flattenPositions } from "./tools/portfolio.js";
 import { lookupInstrumentId } from "./tools/trading.js";
 import { formatTable } from "./utils/table-formatter.js";
@@ -216,10 +217,10 @@ async function main() {
             pageSize: searchPageSize,
           }));
         }
-        case "instrument":
-          return output(await client.get(paths.marketData("instruments"), {
-            instrumentIds: requireArg(rest, 0, "ids"),
-          }));
+        case "instrument": {
+          const instrumentCache = new TtlCache<unknown>();
+          return output(await fetchInstrumentsBatch(client, paths, requireArg(rest, 0, "ids"), instrumentCache));
+        }
         case "rates":
           return output(await client.get(paths.marketData("instruments/rates"), {
             instrumentIds: requireArg(rest, 0, "ids"),
