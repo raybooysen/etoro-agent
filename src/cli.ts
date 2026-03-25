@@ -6,7 +6,7 @@ import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles, fetchInstrumentsBatch, enrichWithNames } from "./tools/market-data.js";
 import { TtlCache } from "./utils/cache.js";
-import { flattenPnl, flattenPositions, extractTradeHistoryItems } from "./tools/portfolio.js";
+import { flattenPnl, flattenPositions, extractTradeHistoryItems, extractPositionIds } from "./tools/portfolio.js";
 import { lookupInstrumentId } from "./tools/trading.js";
 import { formatTable } from "./utils/table-formatter.js";
 
@@ -279,10 +279,34 @@ async function main() {
 
     case "portfolio":
       switch (sub) {
-        case "positions":
-          return output(flattenPositions(await client.get(paths.portfolio())));
-        case "pnl":
-          return output(flattenPnl(await client.get(paths.pnl())));
+        case "positions": {
+          let positions = flattenPositions(await client.get(paths.portfolio()));
+          const posIds = extractPositionIds(positions);
+          if (posIds.length > 0) {
+            try {
+              const posCache = new TtlCache<unknown>();
+              positions = (await enrichWithNames(client, paths, posIds.join(","), positions, posCache)) as unknown[];
+            } catch {
+              // Best-effort
+            }
+          }
+          return output(positions);
+        }
+        case "pnl": {
+          const pnl = flattenPnl(await client.get(paths.pnl())) as Record<string, unknown>;
+          if (Array.isArray(pnl.positions) && pnl.positions.length > 0) {
+            const pnlPosIds = extractPositionIds(pnl.positions);
+            if (pnlPosIds.length > 0) {
+              try {
+                const pnlCache = new TtlCache<unknown>();
+                pnl.positions = (await enrichWithNames(client, paths, pnlPosIds.join(","), pnl.positions, pnlCache)) as unknown[];
+              } catch {
+                // Best-effort
+              }
+            }
+          }
+          return output(pnl);
+        }
         case "order":
           return output(await client.get(
             paths.orderInfo(requireArg(rest, 0, "orderId")),

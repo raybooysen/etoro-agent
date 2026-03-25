@@ -54,13 +54,34 @@ export function flattenPnl(result: unknown): unknown {
   const portfolio = (obj.clientPortfolio ?? obj.ClientPortfolio) as Record<string, unknown> | undefined;
   if (!portfolio) return result;
 
-  return {
+  const flattened: Record<string, unknown> = {
     TotalEquity: (Number(portfolio.credit ?? portfolio.Credit ?? 0)) + (Number(portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL ?? 0)),
     TotalPnL: portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL ?? portfolio.totalPnL ?? portfolio.TotalPnL,
     UnrealizedPnL: portfolio.unrealizedPnL ?? portfolio.UnrealizedPnL,
     Cash: portfolio.credit ?? portfolio.Credit,
     ...portfolio,
   };
+
+  // Also flatten positions within the pnl response
+  const positions = (portfolio.positions ?? portfolio.Positions) as unknown[] | undefined;
+  if (Array.isArray(positions) && positions.length > 0) {
+    flattened.positions = flattenPositions(result);
+  }
+
+  return flattened;
+}
+
+/** Extract unique instrument IDs from a positions array. */
+export function extractPositionIds(positions: unknown[]): string[] {
+  const ids = positions
+    .map((p) => {
+      if (typeof p !== "object" || p === null) return undefined;
+      const rec = p as Record<string, unknown>;
+      return rec.instrumentID ?? rec.InstrumentID;
+    })
+    .filter((id) => id !== undefined)
+    .map(String);
+  return [...new Set(ids)];
 }
 
 /** Extract trade items from the trade history API response, handling various wrapper shapes. */
@@ -109,23 +130,26 @@ export function registerPortfolioTools(
         }
         const result = await client.get(path);
         if (view === "pnl") {
-          return jsonContent(flattenPnl(result));
+          const pnl = flattenPnl(result) as Record<string, unknown>;
+          // Enrich positions within pnl response
+          if (Array.isArray(pnl.positions) && pnl.positions.length > 0) {
+            const ids = extractPositionIds(pnl.positions);
+            if (ids.length > 0) {
+              try {
+                pnl.positions = (await enrichWithNames(client, paths, ids.join(","), pnl.positions, instrumentCache)) as unknown[];
+              } catch {
+                // Best-effort
+              }
+            }
+          }
+          return jsonContent(pnl);
         }
         if (view === "positions") {
           let positions = flattenPositions(result);
-          // Enrich with instrument names
-          const ids = positions
-            .map((p) => {
-              if (typeof p !== "object" || p === null) return undefined;
-              const rec = p as Record<string, unknown>;
-              return rec.instrumentID ?? rec.InstrumentID;
-            })
-            .filter((id) => id !== undefined)
-            .map(String);
+          const ids = extractPositionIds(positions);
           if (ids.length > 0) {
             try {
-              const uniqueIds = [...new Set(ids)].join(",");
-              positions = (await enrichWithNames(client, paths, uniqueIds, positions, instrumentCache)) as unknown[];
+              positions = (await enrichWithNames(client, paths, ids.join(","), positions, instrumentCache)) as unknown[];
             } catch {
               // Enrichment is best-effort; return positions without names
             }
