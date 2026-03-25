@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { flattenPnl, flattenPositions, extractTradeHistoryItems } from "../../../src/tools/portfolio.js";
+import { flattenPnl, flattenPositions, extractTradeHistoryItems, extractPositionIds } from "../../../src/tools/portfolio.js";
 
 describe("flattenPnl", () => {
   it("should flatten nested clientPortfolio response", () => {
@@ -212,5 +212,58 @@ describe("extractTradeHistoryItems", () => {
   it("returns empty when no known wrapper key found", () => {
     const result = { someOtherKey: [1, 2, 3] };
     expect(extractTradeHistoryItems(result).items).toEqual([]);
+  });
+});
+
+describe("extractPositionIds", () => {
+  it("extracts unique IDs from positions with camelCase", () => {
+    const positions = [
+      { positionID: 1, instrumentID: 18 },
+      { positionID: 2, instrumentID: 42 },
+      { positionID: 3, instrumentID: 18 },
+    ];
+    const ids = extractPositionIds(positions);
+    expect(ids).toEqual(["18", "42"]);
+  });
+
+  it("extracts IDs from PascalCase", () => {
+    const positions = [{ PositionID: 1, InstrumentID: 100 }];
+    expect(extractPositionIds(positions)).toEqual(["100"]);
+  });
+
+  it("returns empty for empty array", () => {
+    expect(extractPositionIds([])).toEqual([]);
+  });
+
+  it("skips non-object entries", () => {
+    const positions = [null, undefined, "string", { instrumentID: 5 }] as unknown[];
+    expect(extractPositionIds(positions)).toEqual(["5"]);
+  });
+});
+
+describe("flattenPnl with positions", () => {
+  it("flattens positions inside the pnl response", () => {
+    const raw = {
+      clientPortfolio: {
+        credit: 10000,
+        unrealizedPnL: 500,
+        positions: [
+          {
+            positionID: 123,
+            instrumentID: 18,
+            amount: 1000,
+            unrealizedPnL: { closeRate: 160, pnL: 66.67 },
+          },
+        ],
+      },
+    };
+    const result = flattenPnl(raw) as Record<string, unknown>;
+    expect(result.TotalEquity).toBe(10500);
+    const positions = result.positions as Array<Record<string, unknown>>;
+    expect(positions).toHaveLength(1);
+    expect(positions[0].currentRate).toBe(160);
+    expect(positions[0].pnL).toBe(66.67);
+    // Nested unrealizedPnL should be removed from position
+    expect(positions[0].unrealizedPnL).toBeUndefined();
   });
 });

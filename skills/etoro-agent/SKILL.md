@@ -118,7 +118,7 @@ etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 --stop-loss 
 
 **Step 5 — Verify the position:**
 ```bash
-etoro-cli portfolio positions | jq '.[] | select(.instrumentID == 1)'
+etoro-cli portfolio positions | jq '.[] | select(.instrumentID == 1) | {symbolFull, currentRate, pnL}'
 ```
 ```
 # MCP: get_portfolio(view: "positions")
@@ -130,8 +130,11 @@ Check positions, P&L, and review recent trade history.
 
 ```bash
 # Current positions
-etoro-cli portfolio positions | jq '.Positions | length'
+etoro-cli portfolio positions | jq 'length'
 # → number of open positions
+
+# Position details with names and P&L
+etoro-cli portfolio positions | jq '.[] | {symbolFull, instrumentDisplayName, currentRate, pnL, pnLPercent}'
 
 # P&L summary
 etoro-cli portfolio pnl | jq '{TotalPnL, TotalEquity, UnrealizedPnL, Cash}'
@@ -540,7 +543,7 @@ etoro-cli trade open --instrument 1 --buy --leverage 1 --amount 100 --stop-loss 
 
 Verify the position exists and get the correct position ID:
 ```bash
-etoro-cli portfolio positions | jq '.[] | {positionID, instrumentID, isBuy, amount}'
+etoro-cli portfolio positions | jq '.[] | {positionID, instrumentID, symbolFull, isBuy, amount, pnL}'
 ```
 
 ### Batch rate requests
