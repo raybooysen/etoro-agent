@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { flattenPnl, flattenPositions } from "../../../src/tools/portfolio.js";
+import { flattenPnl, flattenPositions, extractTradeHistoryItems } from "../../../src/tools/portfolio.js";
 
 describe("flattenPnl", () => {
   it("should flatten nested clientPortfolio response", () => {
@@ -172,5 +172,45 @@ describe("flattenPositions", () => {
     expect(result[0].pnLPercent).toBe(10);
     expect(result[1].pnLPercent).toBe(-10);
     expect(result[2].pnLPercent).toBeUndefined();
+  });
+});
+
+describe("extractTradeHistoryItems", () => {
+  it("extracts from { publicHistoryPositions: [...] }", () => {
+    const result = { publicHistoryPositions: [{ instrumentID: 18 }, { instrumentID: 1001 }] };
+    const { items, wrapper } = extractTradeHistoryItems(result);
+    expect(items).toHaveLength(2);
+    expect(wrapper).toBe("publicHistoryPositions");
+  });
+
+  it("extracts from { items: [...] }", () => {
+    const result = { items: [{ instrumentID: 18 }] };
+    const { items, wrapper } = extractTradeHistoryItems(result);
+    expect(items).toHaveLength(1);
+    expect(wrapper).toBe("items");
+  });
+
+  it("extracts from { Items: [...] } (PascalCase)", () => {
+    const result = { Items: [{ InstrumentID: 18 }] };
+    const { items, wrapper } = extractTradeHistoryItems(result);
+    expect(items).toHaveLength(1);
+    expect(wrapper).toBe("Items");
+  });
+
+  it("handles a bare array", () => {
+    const result = [{ instrumentID: 18 }, { instrumentID: 42 }];
+    const { items, wrapper } = extractTradeHistoryItems(result);
+    expect(items).toHaveLength(2);
+    expect(wrapper).toBeNull();
+  });
+
+  it("returns empty for null/undefined", () => {
+    expect(extractTradeHistoryItems(null).items).toEqual([]);
+    expect(extractTradeHistoryItems(undefined).items).toEqual([]);
+  });
+
+  it("returns empty when no known wrapper key found", () => {
+    const result = { someOtherKey: [1, 2, 3] };
+    expect(extractTradeHistoryItems(result).items).toEqual([]);
   });
 });
