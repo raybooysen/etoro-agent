@@ -262,17 +262,22 @@ etoro-cli trade open-units --instrument <instrument_id> --buy --leverage 1 --uni
 etoro-cli trade close 12345678
 ```
 
-#### Place a limit order
+#### Place a limit or stop entry order
 
-A limit order executes when the instrument reaches your specified price.
+A limit order executes when the instrument reaches your specified price. The same command works for both limit entries (buy the dip) and stop entries (buy the breakout) — the API accepts any rate:
 
 ```bash
-# Buy Apple when it hits $150
-etoro-cli trade limit --instrument 1 --buy --leverage 1 --amount 100 --rate 150.00
-
-# With stop loss and take profit
-etoro-cli trade limit --instrument 1 --buy --leverage 1 --amount 100 --rate 150.00 \
+# Limit buy — buy when price DROPS to $150
+etoro-cli trade limit --instrument 1001 --buy --leverage 1 --amount 100 --rate 150.00 \
   --stop-loss 140.00 --take-profit 180.00
+
+# Stop entry buy (breakout) — buy when price RISES to $260
+etoro-cli trade limit --instrument 1111 --buy --leverage 1 --amount 500 --rate 260.00 \
+  --stop-loss 250.00 --take-profit 280.00
+
+# Stop entry sell (breakdown) — short when price DROPS to $4300
+etoro-cli trade limit --instrument 18 --sell --leverage 1 --amount 1000 --rate 4300.00 \
+  --stop-loss 4400.00 --take-profit 4100.00
 ```
 
 #### Cancel an order

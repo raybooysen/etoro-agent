@@ -297,10 +297,23 @@ etoro-cli trade open-units \
 etoro-cli trade close <positionId>
 
 # Place a limit order (executes when price reaches --rate)
+# Works as BOTH limit entry AND stop entry:
+#   - Rate BELOW market + buy = limit buy (dip buy)
+#   - Rate ABOVE market + buy = stop buy (breakout entry)
+#   - Rate ABOVE market + sell = limit sell (take profit)
+#   - Rate BELOW market + sell = stop sell (breakdown entry)
 etoro-cli trade limit \
   --instrument <id> --buy | --sell \
   --leverage <n> --amount <n> --rate <price> \
   [--stop-loss <rate>] [--take-profit <rate>]
+
+# Example: breakout buy — enter TSLA if it breaks above 260
+etoro-cli trade limit --instrument 1111 --buy --leverage 1 --amount 500 --rate 260 \
+  --stop-loss 250 --take-profit 280
+
+# Example: breakdown sell — short GOLD if it drops below 4300
+etoro-cli trade limit --instrument 18 --sell --leverage 1 --amount 1000 --rate 4300 \
+  --stop-loss 4400 --take-profit 4100
 
 # Cancel a pending order (auto-detects limit vs market order)
 etoro-cli trade cancel <orderId>
