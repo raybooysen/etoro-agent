@@ -136,8 +136,8 @@ etoro-cli portfolio positions | jq '.Positions | length'
 # P&L summary
 etoro-cli portfolio pnl | jq '{TotalPnL, TotalEquity, UnrealizedPnL, Cash}'
 
-# Recent closed trades
-etoro-cli portfolio history --min-date 2025-01-01 --page-size 10 | jq '.items[] | {instrumentID, netProfit, closeDateTime}'
+# Recent closed trades (with instrument names)
+etoro-cli portfolio history --min-date 2025-01-01 --page-size 10 --include-names | jq '.items[] | {instrumentDisplayName, symbolFull, instrumentID, netProfit, closeDateTime}'
 
 # Check a specific order status
 etoro-cli portfolio order 12345678
@@ -382,7 +382,7 @@ etoro-cli discovery recommendations [--count N] # personalized picks (default: 1
 | `get_reference_data` | Cached reference data | `type` (instrument_types/exchanges/stocks_industries) |
 | `get_market_status` | Check if instruments are tradeable | `symbols` (comma-separated, e.g. "AAPL,BTC") |
 | `get_portfolio` | Positions, P&L, order status | `view` (positions/pnl/order), `orderId` |
-| `get_trade_history` | Closed trades | `minDate` (YYYY-MM-DD), `page`, `pageSize` |
+| `get_trade_history` | Closed trades | `minDate` (YYYY-MM-DD), `page`, `pageSize`, `includeNames` (opt-in) |
 | `search_people` | Find traders | `action` (search/lookup), `period`, `isPopularInvestor` |
 | `get_user_info` | Trader details | `view` (portfolio/tradeinfo/gain/daily_gain/copiers), `username` |
 | `get_discovery` | Curated lists/recommendations | `type`, `count` |

@@ -4,9 +4,9 @@ import { EtoroClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
 import { EtoroApiError } from "./types/errors.js";
-import { flattenCandles, fetchInstrumentsBatch } from "./tools/market-data.js";
+import { flattenCandles, fetchInstrumentsBatch, enrichWithNames } from "./tools/market-data.js";
 import { TtlCache } from "./utils/cache.js";
-import { flattenPnl, flattenPositions } from "./tools/portfolio.js";
+import { flattenPnl, flattenPositions, extractTradeHistoryItems } from "./tools/portfolio.js";
 import { lookupInstrumentId } from "./tools/trading.js";
 import { formatTable } from "./utils/table-formatter.js";
 
@@ -114,6 +114,7 @@ Commands:
   portfolio order <orderId>          Order execution status
   portfolio history                  Trade history
     --min-date <YYYY-MM-DD>            Required: earliest date
+    --include-names                    Include instrument names (opt-in)
 
   trade open                         Open market order by amount
     --instrument <id>                  Instrument ID (required)
@@ -286,12 +287,40 @@ async function main() {
           return output(await client.get(
             paths.orderInfo(requireArg(rest, 0, "orderId")),
           ));
-        case "history":
-          return output(await client.get(paths.tradeHistory(), {
+        case "history": {
+          const historyResult = await client.get(paths.tradeHistory(), {
             minDate: flag(f, "min-date"),
             page: flagNum(f, "page"),
             pageSize: flagNum(f, "page-size"),
-          }));
+          });
+          if (f["include-names"] === "true") {
+            const { items, wrapper } = extractTradeHistoryItems(historyResult);
+            if (items.length > 0) {
+              const historyIds = items
+                .map((item) => {
+                  if (typeof item !== "object" || item === null) return undefined;
+                  const rec = item as Record<string, unknown>;
+                  return rec.instrumentID ?? rec.InstrumentID;
+                })
+                .filter((id) => id !== undefined)
+                .map(String);
+              if (historyIds.length > 0) {
+                try {
+                  const uniqueIds = [...new Set(historyIds)].join(",");
+                  const historyCache = new TtlCache<unknown>();
+                  const enriched = (await enrichWithNames(client, paths, uniqueIds, items, historyCache)) as unknown[];
+                  if (wrapper && typeof historyResult === "object" && historyResult !== null) {
+                    return output({ ...(historyResult as Record<string, unknown>), [wrapper]: enriched });
+                  }
+                  return output(enriched);
+                } catch {
+                  // Best-effort
+                }
+              }
+            }
+          }
+          return output(historyResult);
+        }
         default:
           error(`Unknown portfolio subcommand: ${sub}. Try: positions, pnl, order, history`);
       }

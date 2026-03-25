@@ -63,6 +63,21 @@ export function flattenPnl(result: unknown): unknown {
   };
 }
 
+/** Extract trade items from the trade history API response, handling various wrapper shapes. */
+export function extractTradeHistoryItems(result: unknown): { items: unknown[]; wrapper: string | null } {
+  if (Array.isArray(result)) return { items: result, wrapper: null };
+  if (typeof result !== "object" || result === null) return { items: [], wrapper: null };
+
+  const obj = result as Record<string, unknown>;
+  // Check known wrapper keys
+  for (const key of ["publicHistoryPositions", "PublicHistoryPositions", "items", "Items", "closedPositions", "ClosedPositions"]) {
+    if (Array.isArray(obj[key])) {
+      return { items: obj[key] as unknown[], wrapper: key };
+    }
+  }
+  return { items: [], wrapper: null };
+}
+
 export function registerPortfolioTools(
   server: McpServer,
   client: EtoroClient,
@@ -132,14 +147,42 @@ export function registerPortfolioTools(
       minDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Minimum date in YYYY-MM-DD format"),
       page: z.number().int().positive().optional().describe("Page number"),
       pageSize: z.number().int().min(1).max(100).optional().describe("Results per page"),
+      includeNames: z.boolean().default(false).describe("Include instrument display names in response (opt-in, costs extra API calls)"),
     },
-    async ({ minDate, page, pageSize }) => {
+    async ({ minDate, page, pageSize, includeNames }) => {
       try {
         const params: Record<string, string | number | undefined> = { minDate };
         if (page !== undefined) params.page = page;
         if (pageSize !== undefined) params.pageSize = pageSize;
 
         const result = await client.get(paths.tradeHistory(), params);
+
+        if (includeNames) {
+          const { items, wrapper } = extractTradeHistoryItems(result);
+          if (items.length > 0) {
+            const ids = items
+              .map((item) => {
+                if (typeof item !== "object" || item === null) return undefined;
+                const rec = item as Record<string, unknown>;
+                return rec.instrumentID ?? rec.InstrumentID;
+              })
+              .filter((id) => id !== undefined)
+              .map(String);
+            if (ids.length > 0) {
+              try {
+                const uniqueIds = [...new Set(ids)].join(",");
+                const enriched = (await enrichWithNames(client, paths, uniqueIds, items, instrumentCache)) as unknown[];
+                if (wrapper && typeof result === "object" && result !== null) {
+                  return jsonContent({ ...(result as Record<string, unknown>), [wrapper]: enriched });
+                }
+                return jsonContent(enriched);
+              } catch {
+                // Enrichment is best-effort
+              }
+            }
+          }
+        }
+
         return jsonContent(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
