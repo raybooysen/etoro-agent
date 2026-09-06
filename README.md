@@ -438,7 +438,7 @@ etoro-cli social search --period CurrYear --popular-investor --page-size 50 | \
 
 ## MCP Server Setup
 
-The MCP server exposes the same eToro API capabilities as 18 MCP tools, accessible from any MCP-compatible client. The server communicates via stdio transport.
+The MCP server exposes the same eToro API capabilities as 19 MCP tools, accessible from any MCP-compatible client. The server communicates via stdio transport.
 
 ### Claude Desktop
 

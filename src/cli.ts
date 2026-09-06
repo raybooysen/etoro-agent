@@ -1,9 +1,6 @@
-#!/usr/bin/env node
-
 import { EtoroClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
-import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles, fetchInstrumentsBatch, enrichWithNames } from "./tools/market-data.js";
 import { TtlCache } from "./utils/cache.js";
 import { flattenPnl, flattenPositions, extractTradeHistoryItems, extractPositionIds } from "./tools/portfolio.js";
@@ -552,17 +549,3 @@ export async function main(): Promise<void> {
       error(`Unknown command: ${command}. Run 'etoro-cli help' for usage.`);
   }
 }
-
-main().catch((err) => {
-  if (err instanceof EtoroApiError) {
-    console.error(JSON.stringify({
-      error: err.message,
-      statusCode: err.statusCode,
-      errorCode: err.errorCode,
-      body: err.body,
-    }, null, 2));
-  } else {
-    console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
-  }
-  process.exit(1);
-});

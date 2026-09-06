@@ -29,7 +29,7 @@ Partial changes (e.g. fixing the MCP tool but not the CLI, or updating code but 
 
 ## Project Overview
 
-MCP server and CLI for the eToro Public API. Provides 18 MCP tools and a full CLI covering trading execution, portfolio management, market data, social/copy trading, watchlists, feeds, discovery, and agent portfolios. Two entry points: `src/index.ts` (MCP via stdio) and `src/cli.ts` (CLI).
+MCP server and CLI for the eToro Public API. Provides 19 MCP tools and a full CLI covering trading execution, portfolio management, market data, social/copy trading, watchlists, feeds, discovery, and agent portfolios. Two entry points: `src/index.ts` (MCP via stdio) and `src/cli.ts` (CLI).
 
 ## Tech Stack
 
