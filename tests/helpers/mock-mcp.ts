@@ -5,7 +5,7 @@ import { createPathResolver } from "../../src/utils/path-resolver.js";
 type ToolHandler = (args: any) => Promise<unknown>;
 
 export interface MockServer {
-  tool: ReturnType<typeof vi.fn>;
+  tool: { tool: ReturnType<typeof vi.fn> };
   handlers: Map<string, ToolHandler>;
 }
 
@@ -15,12 +15,13 @@ export interface MockServer {
  */
 export function createMockServer(): MockServer {
   const handlers = new Map<string, ToolHandler>();
-  const tool = vi.fn(
+  const toolFn = vi.fn(
     (name: string, _description: string, _schema: unknown, handler: ToolHandler) => {
       handlers.set(name, handler);
     },
   );
-  return { tool, handlers } as unknown as MockServer;
+  const server = { tool: toolFn };
+  return { tool: server, handlers };
 }
 
 type ClientMethod = "get" | "post" | "put" | "patch" | "delete";
