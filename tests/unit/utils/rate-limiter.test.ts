@@ -195,4 +195,14 @@ describe("RateLimiter", () => {
       expect(status.remaining).toBe(60);
     });
   });
+
+  it("does not wait when the bucket has room again exactly at check time", async () => {
+    const limiter = new RateLimiter({ getLimit: 1, windowMs: 100 });
+
+    await limiter.acquire("GET");
+    await vi.advanceTimersByTimeAsync(100); // window fully elapses before the 2nd acquire
+    await limiter.acquire("GET"); // should resolve immediately — waitMs <= 0 branch
+
+    // No assertion needed beyond "this resolves without hanging" (test times out otherwise)
+  });
 });
