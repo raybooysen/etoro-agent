@@ -294,14 +294,14 @@ describe("get_portfolio handler", () => {
   it("positions view returns unenriched positions if enrichment fails", async () => {
     const { handler } = setupPortfolio({
       get: vi.fn()
-        .mockResolvedValueOnce({ clientPortfolio: { positions: [{ positionID: 1, instrumentID: 18 }] } })
+        .mockResolvedValueOnce({ clientPortfolio: { positions: [{ positionID: 1, instrumentID: 21 }] } })
         .mockRejectedValueOnce(new Error("lookup failed")),
     });
 
     const result = await handler({ view: "positions" });
 
     const positions = JSON.parse(result.content[0].text);
-    expect(positions[0]).toMatchObject({ positionID: 1, instrumentID: 18 });
+    expect(positions[0]).toMatchObject({ positionID: 1, instrumentID: 21 });
   });
 
   it("pnl view flattens and enriches nested positions", async () => {
