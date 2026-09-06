@@ -37,8 +37,12 @@ MCP server and CLI for the eToro Public API. Provides 18 MCP tools and a full CL
 - **Language:** TypeScript 5.7+ with `NodeNext` module resolution
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (`McpServer` from `@modelcontextprotocol/sdk/server/mcp.js`)
 - **Validation:** Zod (required peer dep of the SDK)
-- **Test:** Vitest (80% coverage threshold enforced)
+- **Test:** Vitest (coverage thresholds enforced: 78% statements, 65% branches, 90% functions, 79% lines)
 - **Transport:** stdio (spawned by MCP clients as a child process)
+
+### Known gaps
+
+- **`src/cli.ts` has partial coverage.** Unit tests exercise a representative sample of CLI commands (help, identity, market search, unknown-subcommand error, missing-required-arg error, table-output fallback) rather than every one of the ~15 command groups (portfolio, trading, watchlists, agent-portfolios, social, feeds, discovery, etc.). This is an accepted, documented scope boundary — not a defect — and is the main reason the overall branch-coverage threshold sits at 65% rather than higher.
 
 ## Commands
 
