@@ -553,7 +553,7 @@ describe("get_rates handler", () => {
 
   it("returns errorContent when the client throws", async () => {
     const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
-    const result = await handlers.get("get_rates")!({ instrumentIds: "999", type: "current", includeNames: false });
+    const result = await handlers.get("get_rates")!({ instrumentIds: "1", type: "current", includeNames: false });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Failed to get rates: boom");
   });
