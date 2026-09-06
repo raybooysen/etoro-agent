@@ -250,6 +250,26 @@ describe("manage_order handler", () => {
     });
   });
 
+  it("place_limit_order with AmountInUnits instead of Amount", async () => {
+    const { client, handlers } = setupTrading();
+    await handlers.get("manage_order")!({
+      action: "place_limit_order", InstrumentID: 1, IsBuy: true, Leverage: 1, Rate: 150, AmountInUnits: 10,
+    });
+    expect(client.post).toHaveBeenCalledWith(demoPaths.trading("limit-orders"), {
+      InstrumentID: 1, IsBuy: true, Leverage: 1, Rate: 150, AmountInUnits: 10,
+    });
+  });
+
+  it("place_limit_order with IsBuy false (sell limit order)", async () => {
+    const { client, handlers } = setupTrading();
+    await handlers.get("manage_order")!({
+      action: "place_limit_order", InstrumentID: 1, IsBuy: false, Leverage: 1, Rate: 150,
+    });
+    expect(client.post).toHaveBeenCalledWith(demoPaths.trading("limit-orders"), {
+      InstrumentID: 1, IsBuy: false, Leverage: 1, Rate: 150,
+    });
+  });
+
   it("rejects place_limit_order missing required fields", async () => {
     const { handlers } = setupTrading();
     const result = await handlers.get("manage_order")!({ action: "place_limit_order", InstrumentID: 1, IsBuy: true });
