@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { enrichWithNames, flattenCandles } from "../../../src/tools/market-data.js";
+import { enrichWithNames, flattenCandles, registerMarketDataTools } from "../../../src/tools/market-data.js";
 import { EtoroClient } from "../../../src/client.js";
 import { TtlCache } from "../../../src/utils/cache.js";
 import { createPathResolver, type PathResolver } from "../../../src/utils/path-resolver.js";
+import { createMockServer, createMockClient, demoPaths } from "../../helpers/mock-mcp.js";
 
 function makeMockClient(getResponse: unknown = []): EtoroClient {
   const mockFetch = vi.fn().mockResolvedValue(
@@ -453,5 +454,177 @@ describe("get_market_status (via mock client)", () => {
 
     const items = result.items as Array<unknown>;
     expect(items).toHaveLength(0);
+  });
+});
+
+function setupMarketData(overrides: Parameters<typeof createMockClient>[0] = {}) {
+  const client = createMockClient({ get: vi.fn().mockResolvedValue({}), ...overrides });
+  const { tool, handlers } = createMockServer();
+  registerMarketDataTools(tool as any, client, demoPaths);
+  return { client, handlers };
+}
+
+describe("search_instruments handler", () => {
+  it("returns symbol matches directly when found", async () => {
+    const { client, handlers } = setupMarketData({
+      get: vi.fn().mockResolvedValue({ items: [{ instrumentId: 1 }] }),
+    });
+    const result = await handlers.get("search_instruments")!({ query: "AAPL", filterBy: "symbol", page: 1, pageSize: 20 });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("search"), { InternalSymbolFull: "AAPL", pageNumber: 1, pageSize: 20 });
+    expect(JSON.parse(result.content[0].text).items).toHaveLength(1);
+  });
+
+  it("falls back to name search when symbol search returns nothing", async () => {
+    const { client, handlers } = setupMarketData({
+      get: vi.fn()
+        .mockResolvedValueOnce({ items: [] })
+        .mockResolvedValueOnce({ items: [{ instrumentId: 2 }] }),
+    });
+    const result = await handlers.get("search_instruments")!({ query: "Apple", filterBy: "symbol", page: 1, pageSize: 20 });
+    expect(client.get).toHaveBeenNthCalledWith(2, demoPaths.marketData("search"), { internalInstrumentDisplayName: "Apple", pageNumber: 1, pageSize: 20 });
+    expect(JSON.parse(result.content[0].text).items).toHaveLength(1);
+  });
+
+  it("searches by name directly when filterBy is name", async () => {
+    const { client, handlers } = setupMarketData({ get: vi.fn().mockResolvedValue({ items: [] }) });
+    await handlers.get("search_instruments")!({ query: "Apple", filterBy: "name", page: 1, pageSize: 20 });
+    expect(client.get).toHaveBeenCalledTimes(1);
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("search"), { internalInstrumentDisplayName: "Apple", pageNumber: 1, pageSize: 20 });
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
+    const result = await handlers.get("search_instruments")!({ query: "AAPL", filterBy: "symbol", page: 1, pageSize: 20 });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to search instruments: boom");
+  });
+});
+
+describe("get_instruments handler", () => {
+  it("delegates to fetchInstrumentsBatch", async () => {
+    const { client, handlers } = setupMarketData({
+      get: vi.fn().mockResolvedValue({ instrumentDisplayDatas: [{ instrumentID: 1 }] }),
+    });
+    const result = await handlers.get("get_instruments")!({ instrumentIds: "1" });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("instruments"), { instrumentIds: "1" });
+    expect(JSON.parse(result.content[0].text)).toEqual({ instrumentDisplayDatas: [{ instrumentID: 1 }] });
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
+    const result = await handlers.get("get_instruments")!({ instrumentIds: "999" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get instruments: boom");
+  });
+});
+
+describe("get_rates handler", () => {
+  it("fetches current rates without enrichment by default", async () => {
+    const { client, handlers } = setupMarketData({ get: vi.fn().mockResolvedValue({ rates: [] }) });
+    await handlers.get("get_rates")!({ instrumentIds: "1,2", type: "current", includeNames: false });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("instruments/rates"), { instrumentIds: "1,2" });
+  });
+
+  it("fetches closing price rates when type is closing_price", async () => {
+    const { client, handlers } = setupMarketData({ get: vi.fn().mockResolvedValue({ rates: [] }) });
+    await handlers.get("get_rates")!({ instrumentIds: "1", type: "closing_price", includeNames: false });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("instruments/history/closing-price"), { instrumentIds: "1" });
+  });
+
+  it("enriches rates with names when includeNames is true", async () => {
+    const { handlers } = setupMarketData({
+      get: vi.fn()
+        .mockResolvedValueOnce({ rates: [{ instrumentID: 2 }] })
+        .mockResolvedValueOnce({ instrumentDisplayDatas: [{ instrumentID: 2, instrumentDisplayName: "Apple", symbolFull: "AAPL" }] }),
+    });
+    const result = await handlers.get("get_rates")!({ instrumentIds: "2", type: "current", includeNames: true });
+    expect(JSON.parse(result.content[0].text).rates[0]).toMatchObject({ instrumentDisplayName: "Apple" });
+  });
+
+  it("falls back to unenriched rates if enrichment throws", async () => {
+    const { handlers } = setupMarketData({
+      get: vi.fn()
+        .mockResolvedValueOnce({ rates: [{ instrumentID: 3 }] })
+        .mockRejectedValueOnce(new Error("enrich failed")),
+    });
+    const result = await handlers.get("get_rates")!({ instrumentIds: "3", type: "current", includeNames: true });
+    expect(JSON.parse(result.content[0].text)).toEqual({ rates: [{ instrumentID: 3 }] });
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
+    const result = await handlers.get("get_rates")!({ instrumentIds: "999", type: "current", includeNames: false });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get rates: boom");
+  });
+});
+
+describe("get_candles handler", () => {
+  it("fetches and flattens candles", async () => {
+    const { client, handlers } = setupMarketData({
+      get: vi.fn().mockResolvedValue({ candles: [{ candles: [{ open: 1, close: 2, volume: null }] }] }),
+    });
+    const result = await handlers.get("get_candles")!({ instrumentId: 1, interval: "OneDay", count: 100, direction: "desc" });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("instruments/1/history/candles/desc/OneDay/100"));
+    expect(JSON.parse(result.content[0].text)[0].Volume).toBe(0);
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
+    const result = await handlers.get("get_candles")!({ instrumentId: 1, interval: "OneDay", count: 100, direction: "desc" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get candles: boom");
+  });
+});
+
+describe("get_reference_data handler", () => {
+  it("fetches and caches instrument_types", async () => {
+    const { client, handlers } = setupMarketData({ get: vi.fn().mockResolvedValue({ instrumentTypes: [] }) });
+    const first = await handlers.get("get_reference_data")!({ type: "instrument_types" });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("instrument-types"), {});
+    expect(JSON.parse(first.content[0].text)).toEqual({ instrumentTypes: [] });
+
+    // Second call within TTL should be served from cache, no extra client.get call
+    const callsBefore = (client.get as any).mock.calls.length;
+    await handlers.get("get_reference_data")!({ type: "instrument_types" });
+    expect((client.get as any).mock.calls.length).toBe(callsBefore);
+  });
+
+  it("filters exchanges by ids param", async () => {
+    const { client, handlers } = setupMarketData({ get: vi.fn().mockResolvedValue({ exchangeInfo: [] }) });
+    await handlers.get("get_reference_data")!({ type: "exchanges", ids: "1,2" });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.marketData("exchanges"), { exchangeIds: "1,2" });
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
+    const result = await handlers.get("get_reference_data")!({ type: "stocks_industries" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get reference data: boom");
+  });
+});
+
+describe("get_market_status handler", () => {
+  it("reports found instruments with tradability flags", async () => {
+    const { handlers } = setupMarketData({
+      get: vi.fn().mockResolvedValue({
+        items: [{ internalInstrumentId: 1, internalInstrumentDisplayName: "Apple", isCurrentlyTradable: true, isExchangeOpen: true }],
+      }),
+    });
+    const result = await handlers.get("get_market_status")!({ symbols: "AAPL" });
+    expect(JSON.parse(result.content[0].text)[0]).toMatchObject({ symbol: "AAPL", found: true, isCurrentlyTradable: true });
+  });
+
+  it("reports not-found for unmatched symbols", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockResolvedValue({ items: [] }) });
+    const result = await handlers.get("get_market_status")!({ symbols: "ZZZZ" });
+    expect(JSON.parse(result.content[0].text)).toEqual([{ symbol: "ZZZZ", found: false }]);
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handlers } = setupMarketData({ get: vi.fn().mockRejectedValue(new Error("boom")) });
+    const result = await handlers.get("get_market_status")!({ symbols: "AAPL" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get market status: boom");
   });
 });
