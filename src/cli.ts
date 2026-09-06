@@ -17,7 +17,7 @@ interface ParsedArgs {
   flags: Record<string, string>;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
   const globalFlags = new Set(["--api-key", "--user-key", "--environment"]);
@@ -172,7 +172,7 @@ Commands:
 
 // --- Main ---
 
-async function main() {
+export async function main(): Promise<void> {
   const { positional, flags: f } = parseArgs(process.argv.slice(2));
   const [command, sub, ...rest] = positional;
 
