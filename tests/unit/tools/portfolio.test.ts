@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { flattenPnl, flattenPositions, extractTradeHistoryItems, extractPositionIds } from "../../../src/tools/portfolio.js";
+import { describe, it, expect, vi } from "vitest";
+import { flattenPnl, flattenPositions, extractTradeHistoryItems, extractPositionIds, registerPortfolioTools } from "../../../src/tools/portfolio.js";
+import { createMockServer, createMockClient, demoPaths } from "../../helpers/mock-mcp.js";
 
 describe("flattenPnl", () => {
   it("should flatten nested clientPortfolio response", () => {
@@ -265,5 +266,136 @@ describe("flattenPnl with positions", () => {
     expect(positions[0].pnL).toBe(66.67);
     // Nested unrealizedPnL should be removed from position
     expect(positions[0].unrealizedPnL).toBeUndefined();
+  });
+});
+
+function setupPortfolio(overrides: Parameters<typeof createMockClient>[0] = {}) {
+  const client = createMockClient({ get: vi.fn().mockResolvedValue({}), ...overrides });
+  const { tool, handlers } = createMockServer();
+  registerPortfolioTools(tool as any, client, demoPaths);
+  return { client, handler: handlers.get("get_portfolio")! };
+}
+
+describe("get_portfolio handler", () => {
+  it("positions view flattens and enriches positions", async () => {
+    const { client, handler } = setupPortfolio({
+      get: vi.fn()
+        .mockResolvedValueOnce({ clientPortfolio: { positions: [{ positionID: 1, instrumentID: 18, amount: 100 }] } })
+        .mockResolvedValueOnce({ instrumentDisplayDatas: [{ instrumentID: 18, instrumentDisplayName: "Apple", symbolFull: "AAPL" }] }),
+    });
+
+    const result = await handler({ view: "positions" });
+
+    expect(client.get).toHaveBeenNthCalledWith(1, demoPaths.portfolio());
+    const positions = JSON.parse(result.content[0].text);
+    expect(positions[0]).toMatchObject({ positionID: 1, instrumentDisplayName: "Apple", symbolFull: "AAPL" });
+  });
+
+  it("positions view returns unenriched positions if enrichment fails", async () => {
+    const { handler } = setupPortfolio({
+      get: vi.fn()
+        .mockResolvedValueOnce({ clientPortfolio: { positions: [{ positionID: 1, instrumentID: 21 }] } })
+        .mockRejectedValueOnce(new Error("lookup failed")),
+    });
+
+    const result = await handler({ view: "positions" });
+
+    const positions = JSON.parse(result.content[0].text);
+    expect(positions[0]).toMatchObject({ positionID: 1, instrumentID: 21 });
+  });
+
+  it("pnl view flattens and enriches nested positions", async () => {
+    const { client, handler } = setupPortfolio({
+      get: vi.fn()
+        .mockResolvedValueOnce({ clientPortfolio: { credit: 1000, unrealizedPnL: 50, positions: [{ positionID: 1, instrumentID: 18 }] } })
+        .mockResolvedValueOnce({ instrumentDisplayDatas: [{ instrumentID: 18, instrumentDisplayName: "Apple", symbolFull: "AAPL" }] }),
+    });
+
+    const result = await handler({ view: "pnl" });
+
+    expect(client.get).toHaveBeenNthCalledWith(1, demoPaths.pnl());
+    const pnl = JSON.parse(result.content[0].text);
+    expect(pnl.TotalEquity).toBe(1050);
+    expect(pnl.positions[0]).toMatchObject({ instrumentDisplayName: "Apple" });
+  });
+
+  it("order view fetches order info by ID", async () => {
+    const { client, handler } = setupPortfolio({ get: vi.fn().mockResolvedValue({ status: "Filled" }) });
+
+    const result = await handler({ view: "order", orderId: 42 });
+
+    expect(client.get).toHaveBeenCalledWith(demoPaths.orderInfo(42));
+    expect(JSON.parse(result.content[0].text)).toEqual({ status: "Filled" });
+  });
+
+  it("rejects order view without orderId", async () => {
+    const { handler } = setupPortfolio();
+    const result = await handler({ view: "order" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe("orderId is required when view is 'order'");
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handler } = setupPortfolio({ get: vi.fn().mockRejectedValue(new Error("500")) });
+    const result = await handler({ view: "positions" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get portfolio: 500");
+  });
+});
+
+describe("get_trade_history handler", () => {
+  function setupHistory(overrides: Parameters<typeof createMockClient>[0] = {}) {
+    const client = createMockClient({ get: vi.fn().mockResolvedValue({}), ...overrides });
+    const { tool, handlers } = createMockServer();
+    registerPortfolioTools(tool as any, client, demoPaths);
+    return { client, handler: handlers.get("get_trade_history")! };
+  }
+
+  it("fetches trade history without enrichment by default", async () => {
+    const { client, handler } = setupHistory({ get: vi.fn().mockResolvedValue({ items: [] }) });
+    await handler({ minDate: "2026-01-01" });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.tradeHistory(), { minDate: "2026-01-01" });
+  });
+
+  it("passes through page and pageSize when provided", async () => {
+    const { client, handler } = setupHistory({ get: vi.fn().mockResolvedValue({ items: [] }) });
+    await handler({ minDate: "2026-01-01", page: 2, pageSize: 10 });
+    expect(client.get).toHaveBeenCalledWith(demoPaths.tradeHistory(), { minDate: "2026-01-01", page: 2, pageSize: 10 });
+  });
+
+  it("enriches trade history items and re-wraps them under the original wrapper key", async () => {
+    const { handler } = setupHistory({
+      get: vi.fn()
+        .mockResolvedValueOnce({ items: [{ instrumentID: 18 }] })
+        .mockResolvedValueOnce({ instrumentDisplayDatas: [{ instrumentID: 18, instrumentDisplayName: "Apple", symbolFull: "AAPL" }] }),
+    });
+
+    const result = await handler({ minDate: "2026-01-01", includeNames: true });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.items[0]).toMatchObject({ instrumentDisplayName: "Apple" });
+  });
+
+  it("returns raw result unchanged if there are no items to enrich", async () => {
+    const { handler } = setupHistory({ get: vi.fn().mockResolvedValue({ items: [] }) });
+    const result = await handler({ minDate: "2026-01-01", includeNames: true });
+    expect(JSON.parse(result.content[0].text)).toEqual({ items: [] });
+  });
+
+  it("falls back to the unenriched result if enrichment fails", async () => {
+    const { handler } = setupHistory({
+      get: vi.fn()
+        .mockResolvedValueOnce({ items: [{ instrumentID: 99 }] })
+        .mockRejectedValueOnce(new Error("enrich failed")),
+    });
+    const result = await handler({ minDate: "2026-01-01", includeNames: true });
+    expect(JSON.parse(result.content[0].text)).toEqual({ items: [{ instrumentID: 99 }] });
+  });
+
+  it("returns errorContent when the client throws", async () => {
+    const { handler } = setupHistory({ get: vi.fn().mockRejectedValue(new Error("400")) });
+    const result = await handler({ minDate: "2026-01-01" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Failed to get trade history: 400");
   });
 });

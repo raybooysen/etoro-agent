@@ -1,9 +1,6 @@
-#!/usr/bin/env node
-
 import { EtoroClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import { createPathResolver } from "./utils/path-resolver.js";
-import { EtoroApiError } from "./types/errors.js";
 import { flattenCandles, fetchInstrumentsBatch, enrichWithNames } from "./tools/market-data.js";
 import { TtlCache } from "./utils/cache.js";
 import { flattenPnl, flattenPositions, extractTradeHistoryItems, extractPositionIds } from "./tools/portfolio.js";
@@ -17,7 +14,7 @@ interface ParsedArgs {
   flags: Record<string, string>;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
   const globalFlags = new Set(["--api-key", "--user-key", "--environment"]);
@@ -172,7 +169,7 @@ Commands:
 
 // --- Main ---
 
-async function main() {
+export async function main(): Promise<void> {
   const { positional, flags: f } = parseArgs(process.argv.slice(2));
   const [command, sub, ...rest] = positional;
 
@@ -552,17 +549,3 @@ async function main() {
       error(`Unknown command: ${command}. Run 'etoro-cli help' for usage.`);
   }
 }
-
-main().catch((err) => {
-  if (err instanceof EtoroApiError) {
-    console.error(JSON.stringify({
-      error: err.message,
-      statusCode: err.statusCode,
-      errorCode: err.errorCode,
-      body: err.body,
-    }, null, 2));
-  } else {
-    console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
-  }
-  process.exit(1);
-});

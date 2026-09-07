@@ -21,7 +21,7 @@
   ],
   "bin": {
     "etoro-mcp": "dist/index.js",
-    "etoro-cli": "dist/cli.js"
+    "etoro-cli": "dist/cli-bin.js"
   },
   "files": [
     "dist"
@@ -30,7 +30,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js dist/cli.js",
+    "build": "tsc && chmod +x dist/index.js dist/cli-bin.js",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "cli": "tsx src/cli.ts",

@@ -432,4 +432,34 @@ describe("EtoroClient", () => {
       expect(url).toBe("https://public-api.etoro.com/api/v1/instruments");
     });
   });
+
+  describe("getRateLimitStatus", () => {
+    it("returns the status of all rate-limit buckets", () => {
+      const client = new EtoroClient(
+        { apiKey: "k", userKey: "u", environment: "demo" },
+        { fetchFn: vi.fn() as unknown as typeof fetch },
+      );
+      const status = client.getRateLimitStatus();
+      expect(status).toHaveProperty("GET");
+      expect(status).toHaveProperty("WRITE");
+    });
+  });
+
+  describe("verbose logging", () => {
+    it("writes rate-limit status to stderr when verbose is true", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const client = new EtoroClient(
+        { apiKey: "k", userKey: "u", environment: "demo" },
+        { fetchFn: mockFetch as unknown as typeof fetch, verbose: true },
+      );
+
+      await client.get("/api/v1/me");
+
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("[rate-limit] GET"));
+      stderrSpy.mockRestore();
+    });
+  });
 });

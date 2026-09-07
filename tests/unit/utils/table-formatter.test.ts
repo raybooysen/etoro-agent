@@ -50,4 +50,18 @@ describe("formatTable", () => {
     const dataLine = lines[2]; // header, separator, first data line
     expect(dataLine!.length).toBeLessThan(65);
   });
+
+  it("returns null for non-array input", () => {
+    expect(formatTable({ not: "an array" })).toBeNull();
+  });
+
+  it("returns null for an empty array", () => {
+    expect(formatTable([])).toBeNull();
+  });
+
+  it("returns null when rows have more than 15 columns", () => {
+    const wideRow: Record<string, number> = {};
+    for (let i = 0; i < 16; i++) wideRow[`col${i}`] = i;
+    expect(formatTable([wideRow])).toBeNull();
+  });
 });
